@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta del Congreso Arquitectura */
+  --color-arq-navy: #10263c;
+  --color-arq-blue: #3b5a80;
+  --color-arq-slate: #5c7081;
+  --color-arq-silver: #a6aeb3;
+  --color-arq-mustard: #c18a29;
+}
