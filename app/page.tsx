@@ -18,12 +18,11 @@ interface Photo {
   user_metadata?: Record<string, unknown>; 
 }
 
-// 1. AGREGA AQUÍ LOS CORREOS DE TODOS LOS ADMINISTRADORES
+// AGREGA AQUÍ LOS CORREOS DE TODOS LOS ADMINISTRADORES
 const ADMIN_EMAILS = [
   "luislacsgamer@gmail.com",
   "jazmincs.castro@gmail.com"
 ]; 
-
 
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05T00:00:00-07:00' },
@@ -105,6 +104,20 @@ export default function Home() {
     const uploadUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
 
     try {
+      // NUEVO: Definimos el perfil que se guardará con la foto
+      let uploaderMeta = {
+        full_name: user.user_metadata?.full_name || "Asistente del Congreso",
+        avatar_url: user.user_metadata?.avatar_url || "/logo-arq.png"
+      };
+
+      // Si quien sube es administrador, usamos un nombre oficial anónimo
+      if (user.email && ADMIN_EMAILS.includes(user.email)) {
+        uploaderMeta = {
+          full_name: "Comité Organizador ARQ",
+          avatar_url: "/logo-arq.png" // Opcional: Puedes cambiar esto por el link directo al logo dorado si prefieres
+        };
+      }
+
       const uploadPromises = Array.from(files).map(async (file) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -115,7 +128,13 @@ export default function Home() {
       });
 
       const uploadedUrls = await Promise.all(uploadPromises);
-      const photosToInsert = uploadedUrls.map(url => ({ user_id: user.id, image_url: url, status: 'aprobado', category: currentUploadCategory }));
+      const photosToInsert = uploadedUrls.map(url => ({ 
+        user_id: user.id, 
+        image_url: url, 
+        status: 'aprobado', 
+        category: currentUploadCategory,
+        user_metadata: uploaderMeta // <-- Guardamos la identidad aquí
+      }));
 
       await supabase.from('photos').insert(photosToInsert);
       toast.success('¡Fotos subidas con éxito!', { id: toastId });
@@ -141,8 +160,18 @@ export default function Home() {
   const openUserGallery = (userId: string) => {
     if(isAdminView) return; 
     setSelectedUserId(userId);
-    setUserPhotos(photos.filter(p => p.user_id === userId));
-    setSelectedUserMeta(user?.id === userId ? user.user_metadata : { full_name: "Asistente del Congreso" });
+    const filteredPhotos = photos.filter(p => p.user_id === userId);
+    setUserPhotos(filteredPhotos);
+
+    // NUEVO: Extraemos el nombre real guardado en la foto
+    if (filteredPhotos.length > 0 && filteredPhotos[0].user_metadata) {
+       setSelectedUserMeta(filteredPhotos[0].user_metadata);
+    } else if (user?.id === userId) {
+       // Respaldo por si es una foto subida antes de esta actualización
+       setSelectedUserMeta(user.user_metadata);
+    } else {
+       setSelectedUserMeta({ full_name: "Asistente del Congreso", avatar_url: "/logo-arq.png" });
+    }
   };
 
   const openCollageGenerator = () => {
@@ -292,7 +321,7 @@ export default function Home() {
          </div>
       </footer>
 
-      {/* ZONA SUBIDA (ADMINS SIEMPRE PUEDEN SUBIR) */}
+      {/* ZONA SUBIDA */}
       {user && categoriesForUpload.length > 0 && (
         <div className="fixed bottom-6 left-0 right-0 flex flex-col items-center z-30 pointer-events-none gap-3">
           <div className="pointer-events-auto bg-white/95 shadow-lg rounded-full px-4 py-2 flex items-center gap-2 text-sm border border-gray-200">
@@ -332,7 +361,6 @@ export default function Home() {
                     <Download size={20} />
                  </button>
                  {isAdminView && (
-                     // Los admins pueden borrar cualquier foto desde aquí
                     <button onClick={() => { handleDeletePhoto(selectedPhoto.id); setSelectedPhoto(null); }} className="p-2 bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-full transition-colors">
                        <Trash2 size={20} />
                     </button>
@@ -384,7 +412,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. MODAL COLLAGE (DISEÑOS CLÁSICOS Y SEGUROS) */}
+      {/* 3. MODAL COLLAGE */}
       {isCollageOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 overflow-y-auto">
             <div className="flex justify-end p-4 shrink-0">
@@ -394,7 +422,7 @@ export default function Home() {
             <div className="flex-1 flex flex-col items-center justify-center p-4 shrink-0">
                <div ref={collageRef} className="relative w-full max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
                   
-                  {/* ESTILO 1: BLANCO EXACTO A TU IMAGEN (2x2 y Logo Superior) */}
+                  {/* ESTILO 1: BLANCO (CUADRÍCULA 2x2) */}
                   {collageStyleType === 1 && (
                     <div className="absolute inset-0 bg-[#f4f4f4] flex flex-col items-center justify-center px-6 py-10">
                       <div className="w-full flex justify-center mb-8 h-[15%]">
@@ -413,10 +441,9 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* ESTILO 2: NEGRO EXACTO A TU IMAGEN (3 Fotos Apiladas dinámicas) */}
+                  {/* ESTILO 2: NEGRO (3 Fotos Apiladas dinámicas) */}
                   {collageStyleType === 2 && (
                     <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-4">
-                      {/* Flex-1 garantiza que las 3 fotos se acomoden sin desbordar el contenedor */}
                       <div className="flex-1 flex flex-col gap-3 overflow-hidden">
                         {collagePhotos.slice(0,3).map((p, i) => (
                            <div key={i} className="flex-1 relative rounded-xl overflow-hidden bg-gray-900 border border-[#222]">
