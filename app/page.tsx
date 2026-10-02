@@ -18,7 +18,7 @@ interface Photo {
   user_metadata?: Record<string, unknown>; 
 }
 
-const ADMIN_EMAIL = "luislacsgamer@gmail.com"; 
+const ADMIN_EMAIL = "jazmincs.castro@gmail.com"; 
 
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05T00:00:00-07:00' },
@@ -135,9 +135,7 @@ export default function Home() {
     setSelectedUserMeta(user?.id === userId ? user.user_metadata : { full_name: "Asistente del Congreso" });
   };
 
-  // NUEVO LÓGICA: Solo usa fotos propias para el collage
   const openCollageGenerator = () => {
-    // Busca las fotos del usuario seleccionado (si estás en su perfil) o tus propias fotos (si estás en el feed)
     const targetPhotos = selectedUserId 
       ? userPhotos 
       : photos.filter(p => p.user_id === user?.id);
@@ -226,7 +224,6 @@ export default function Home() {
                       <ShieldAlert size={18} />
                   </button>
               )}
-              {/* Botón Mi Collage: Requiere estar logueado */}
               {user && !isAdminView && (
                   <button onClick={openCollageGenerator} className="bg-[#bda15f] text-white p-2 sm:px-4 sm:py-2 rounded-full font-bold shadow-md hover:bg-[#a68c4e]">
                       <Wand2 size={18} /> <span className="hidden sm:inline text-sm ml-1">Mi Collage</span>
@@ -376,7 +373,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. MODAL COLLAGE (RESCATADO A PROPORCIONES PERFECTAS) */}
+      {/* 3. MODAL COLLAGE (DISEÑOS ORIGINALES RECUPERADOS Y PERFECTOS) */}
       {isCollageOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 overflow-y-auto">
             <div className="flex justify-end p-4 shrink-0">
@@ -384,66 +381,71 @@ export default function Home() {
             </div>
             
             <div className="flex-1 flex flex-col items-center justify-center p-4 shrink-0">
-               <div ref={collageRef} className="relative w-[85vw] max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
+               <div ref={collageRef} className="relative w-full max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
                   
-                  {/* ESTILO 1: EDITORIAL BLANCO */}
+                  {/* ESTILO 1: DISEÑO BLANCO ORIGINAL (IMPECABLE) */}
                   {collageStyleType === 1 && (
-                    <div className="absolute inset-0 bg-[#ffffff] flex flex-col p-4 border border-gray-100">
-                      <div className="h-[10%] flex items-center justify-center mb-2">
+                    <div className="absolute inset-0 bg-[#f4f4f4] flex flex-col p-6 justify-between">
+                      {/* Logo Superior */}
+                      <div className="w-full flex justify-center py-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain" />
+                        <img src="/logo-dia.png" alt="Logo" className="h-10 object-contain" />
                       </div>
-                      <div className="flex-1 flex flex-col gap-3">
-                        <div className="flex-[2] w-full rounded-xl overflow-hidden shadow-sm">
+                      
+                      {/* 3 Fotos en proporción fija */}
+                      <div className="w-full flex-1 flex flex-col gap-3 my-2 justify-center">
+                        <div className="w-full h-[52%] rounded-xl overflow-hidden shadow-md bg-white p-1">
                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img1" />
+                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg" alt="img1" />
                         </div>
-                        <div className="flex-[1] w-full flex gap-3">
-                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm">
+                        <div className="w-full h-[36%] flex gap-3">
+                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-white p-1">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img2" />
+                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg" alt="img2" />
                            </div>
-                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm">
+                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-white p-1">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img3" />
+                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg" alt="img3" />
                            </div>
                         </div>
                       </div>
-                      <div className="h-[8%] mt-4 flex items-center justify-between px-2">
-                        <div className="text-[9px] text-gray-400 font-bold tracking-[0.2em] uppercase">Guasave, Sinaloa</div>
+
+                      {/* Logo Inferior */}
+                      <div className="w-full flex justify-center py-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-arq.png" alt="Logo" className="h-4/5 object-contain opacity-80" />
+                        <img src="/logo-arq.png" alt="Logo" className="h-8 object-contain opacity-90" />
                       </div>
                     </div>
                   )}
 
-                  {/* ESTILO 2: EDITORIAL OSCURO */}
+                  {/* ESTILO 2: DISEÑO OSCURO ORIGINAL (TIRA DE CINE CLÁSICA) */}
                   {collageStyleType === 2 && (
-                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-4 border border-[#222]">
-                      <div className="h-[10%] flex items-center justify-center mb-2">
+                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-6 justify-between">
+                      <div className="w-full flex justify-center py-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain invert opacity-90" />
+                        <img src="/logo-dia.png" alt="Logo" className="h-10 object-contain invert opacity-90" />
                       </div>
-                      <div className="flex-1 flex flex-col gap-3">
-                        <div className="flex-[2] w-full rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                      
+                      <div className="w-full flex-1 flex flex-col gap-3 my-2 justify-center">
+                        <div className="w-full h-[52%] rounded-xl overflow-hidden shadow-md bg-[#1a1a1a] p-1 border border-[#222]">
                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img1" />
+                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg sepia-[.15]" alt="img1" />
                         </div>
-                        <div className="flex-[1] w-full flex gap-3">
-                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                        <div className="w-full h-[36%] flex gap-3">
+                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-[#1a1a1a] p-1 border border-[#222]">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img2" />
+                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg sepia-[.15]" alt="img2" />
                            </div>
-                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-[#1a1a1a] p-1 border border-[#222]">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img3" />
+                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg sepia-[.15]" alt="img3" />
                            </div>
                         </div>
                       </div>
-                      <div className="h-[8%] mt-4 flex items-center justify-between px-2">
-                        <div className="text-[9px] text-gray-500 font-bold tracking-[0.2em] uppercase">Guasave, Sinaloa</div>
+
+                      <div className="w-full flex justify-center py-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-arq.png" alt="Logo" className="h-4/5 object-contain invert opacity-70" />
+                        <img src="/logo-arq.png" alt="Logo" className="h-8 object-contain invert opacity-80" />
                       </div>
                     </div>
                   )}
