@@ -18,11 +18,12 @@ interface Photo {
   user_metadata?: Record<string, unknown>; 
 }
 
-// 1. AHORA PUEDES AGREGAR MÚLTIPLES ADMINISTRADORES AQUÍ
+// 1. AGREGA AQUÍ LOS CORREOS DE TODOS LOS ADMINISTRADORES
 const ADMIN_EMAILS = [
   "luislacsgamer@gmail.com",
   "jazmincs.castro@gmail.com"
 ]; 
+
 
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05T00:00:00-07:00' },
@@ -57,10 +58,9 @@ export default function Home() {
     return today >= unlockDate;
   };
 
-  // 2. LÓGICA DE SUBIDA CORREGIDA PARA ADMINS
   const categoriesForUpload = isAdminView 
-    ? CATEGORIES.filter(c => c.id !== 'todos') // Admin ve todos los días para subir
-    : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); // Usuarios solo ven los días desbloqueados
+    ? CATEGORIES.filter(c => c.id !== 'todos') 
+    : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); 
 
   const currentUploadCategory = categoriesForUpload.find(c => c.id === uploadCategory) 
     ? uploadCategory 
@@ -150,7 +150,6 @@ export default function Home() {
       ? userPhotos 
       : photos.filter(p => p.user_id === user?.id);
 
-    // Pedimos 4 fotos porque el diseño blanco necesita 4. El oscuro solo usará las primeras 3.
     if (targetPhotos.length < 4) return toast.error('Sube al menos 4 fotos tuyas para generar tu collage.'); 
     
     setCollagePhotos([...targetPhotos].sort(() => 0.5 - Math.random()).slice(0, 4)); 
@@ -293,7 +292,7 @@ export default function Home() {
          </div>
       </footer>
 
-      {/* ZONA SUBIDA (AHORA EL ADMIN SIEMPRE LA VE) */}
+      {/* ZONA SUBIDA (ADMINS SIEMPRE PUEDEN SUBIR) */}
       {user && categoriesForUpload.length > 0 && (
         <div className="fixed bottom-6 left-0 right-0 flex flex-col items-center z-30 pointer-events-none gap-3">
           <div className="pointer-events-auto bg-white/95 shadow-lg rounded-full px-4 py-2 flex items-center gap-2 text-sm border border-gray-200">
@@ -333,6 +332,7 @@ export default function Home() {
                     <Download size={20} />
                  </button>
                  {isAdminView && (
+                     // Los admins pueden borrar cualquier foto desde aquí
                     <button onClick={() => { handleDeletePhoto(selectedPhoto.id); setSelectedPhoto(null); }} className="p-2 bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-full transition-colors">
                        <Trash2 size={20} />
                     </button>
@@ -384,7 +384,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. MODAL COLLAGE CON DISEÑOS PERFECTOS Y MATEMÁTICOS */}
+      {/* 3. MODAL COLLAGE (DISEÑOS CLÁSICOS Y SEGUROS) */}
       {isCollageOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 overflow-y-auto">
             <div className="flex justify-end p-4 shrink-0">
@@ -392,60 +392,46 @@ export default function Home() {
             </div>
             
             <div className="flex-1 flex flex-col items-center justify-center p-4 shrink-0">
-               {/* Contenedor principal anclado a proporción 9:16 (Stories) */}
                <div ref={collageRef} className="relative w-full max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
                   
-                  {/* ESTILO 1: BLANCO (CUADRÍCULA 2x2) */}
+                  {/* ESTILO 1: BLANCO EXACTO A TU IMAGEN (2x2 y Logo Superior) */}
                   {collageStyleType === 1 && (
-                    <div className="absolute inset-0 bg-[#FAFAFA] flex flex-col px-6 py-8">
-                      {/* Logo Superior */}
-                      <div className="w-full flex justify-center mb-6">
+                    <div className="absolute inset-0 bg-[#f4f4f4] flex flex-col items-center justify-center px-6 py-10">
+                      <div className="w-full flex justify-center mb-8 h-[15%]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-dia.png" alt="Logo" className="h-14 object-contain opacity-95" />
+                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain" />
                       </div>
                       
-                      {/* Grid de 4 fotos fijado matemáticamente a cuadrados perfectos */}
-                      <div className="flex-1 w-full flex items-center justify-center">
-                         <div className="grid grid-cols-2 gap-3 w-full">
-                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full aspect-square object-cover rounded-sm shadow-sm" alt="img1" />
-                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full aspect-square object-cover rounded-sm shadow-sm" alt="img2" />
-                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full aspect-square object-cover rounded-sm shadow-sm" alt="img3" />
-                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[3]?.image_url} crossOrigin="anonymous" className="w-full aspect-square object-cover rounded-sm shadow-sm" alt="img4" />
-                         </div>
-                      </div>
-
-                      {/* Logo Inferior */}
-                      <div className="w-full flex justify-center mt-6">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-arq.png" alt="Logo" className="h-10 object-contain opacity-80" />
+                      <div className="w-full grid grid-cols-2 gap-3">
+                        {collagePhotos.slice(0,4).map((p, i) => (
+                           <div key={i} className="aspect-square relative rounded-2xl overflow-hidden shadow-sm bg-gray-200">
+                             {/* eslint-disable-next-line @next/next/no-img-element */}
+                             <img src={p.image_url} crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover" alt={`img${i}`} />
+                           </div>
+                        ))}
                       </div>
                     </div>
                   )}
 
-                  {/* ESTILO 2: OSCURO (3 FOTOS APILADAS PROPORCIONALES) */}
+                  {/* ESTILO 2: NEGRO EXACTO A TU IMAGEN (3 Fotos Apiladas dinámicas) */}
                   {collageStyleType === 2 && (
-                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-5">
-                      {/* Columna de 3 fotos con aspecto forzado 3:2 (clásico de cámara) */}
-                      <div className="flex-1 w-full flex flex-col justify-center gap-4">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full aspect-[3/2] object-cover rounded-sm sepia-[.15] border border-[#222]" alt="img1" />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full aspect-[3/2] object-cover rounded-sm sepia-[.15] border border-[#222]" alt="img2" />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full aspect-[3/2] object-cover rounded-sm sepia-[.15] border border-[#222]" alt="img3" />
+                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-4">
+                      {/* Flex-1 garantiza que las 3 fotos se acomoden sin desbordar el contenedor */}
+                      <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+                        {collagePhotos.slice(0,3).map((p, i) => (
+                           <div key={i} className="flex-1 relative rounded-xl overflow-hidden bg-gray-900 border border-[#222]">
+                             {/* eslint-disable-next-line @next/next/no-img-element */}
+                             <img src={p.image_url} crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover sepia-[.15]" alt={`img${i}`} />
+                           </div>
+                        ))}
                       </div>
                       
-                      {/* Footer con Logos Centrados */}
-                      <div className="w-full flex items-center justify-center gap-6 mt-6 mb-2">
+                      <div className="h-14 mt-4 flex items-center justify-center gap-6 shrink-0">
                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                         <img src="/logo-dia.png" alt="Logo" className="h-8 object-contain invert opacity-80" />
-                         <div className="w-[1px] h-6 bg-gray-700"></div>
+                         <img src="/logo-dia.png" alt="Logo" className="h-full object-contain invert opacity-80" />
+                         <div className="w-[1px] h-3/4 bg-gray-700"></div>
                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                         <img src="/logo-arq.png" alt="Logo" className="h-8 object-contain invert opacity-80" />
+                         <img src="/logo-arq.png" alt="Logo" className="h-2/3 object-contain invert opacity-80" />
                       </div>
                     </div>
                   )}
