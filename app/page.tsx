@@ -1,12 +1,12 @@
 'use client'; 
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Loader2, X, Wand2, Download, ShieldAlert, Lock, Info } from 'lucide-react';
+import { Plus, Loader2, Image as ImageIcon, X, Wand2, Download, Trash2, ShieldAlert, Lock, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase'; 
 import { User } from '@supabase/supabase-js';
 import { Toaster, toast } from 'sonner';
 import { toJpeg } from 'html-to-image';
-import { saveAs } from 'file-saver'; // NUEVO: Importación para descargas móviles
+import { saveAs } from 'file-saver';
 
 interface Photo {
   id: string;
@@ -34,16 +34,16 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [activeCategory, setActiveCategory] = useState('todos');
-  const [uploadCategory, setUploadCategory] = useState('lunes'); 
+  const [uploadCategory, setUploadCategory] = useState(''); 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [userPhotos, setUserPhotos] = useState<Photo[]>([]);
   const [selectedUserMeta, setSelectedUserMeta] = useState<Record<string, unknown> | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null); 
   const [isCollageOpen, setIsCollageOpen] = useState(false);
   const [collagePhotos, setCollagePhotos] = useState<Photo[]>([]);
   const [collageStyleType, setCollageStyleType] = useState<number>(1);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
-  const [isMobileBrowser, setIsMobileBrowser] = useState(false); // NUEVO: Detector de navegador
   const collageRef = useRef<HTMLDivElement>(null); 
 
   const isCategoryUnlocked = (dateString: string) => {
@@ -53,52 +53,46 @@ export default function Home() {
     return today >= unlockDate;
   };
 
+  // NUEVO: Filtramos días desbloqueados y determinamos la categoría automáticamente (Estado Derivado)
+  const unlockedCategories = CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate));
+  const currentUploadCategory = unlockedCategories.find(c => c.id === uploadCategory) ? uploadCategory : (unlockedCategories[0]?.id || '');
+
   const fetchPhotos = useCallback(async () => {
     const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }); 
     if (data) setPhotos(data as Photo[]);
   }, []);
 
   useEffect(() => {
-    if (selectedUserId || isCollageOpen || isAdminView) document.body.style.overflow = 'hidden';
+    if (selectedUserId || isCollageOpen || isAdminView || selectedPhoto) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'auto';
     return () => { document.body.style.overflow = 'auto'; };
-  }, [selectedUserId, isCollageOpen, isAdminView]);
+  }, [selectedUserId, isCollageOpen, isAdminView, selectedPhoto]);
 
   useEffect(() => {
     const initApp = async () => {
-      // 1. Verificamos el usuario
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       if(session?.user?.email === ADMIN_EMAIL) setIsAdminView(true);
-      
-      // 2. Cargamos las fotos
       await fetchPhotos();
-
-      // 3. Detección de navegador móvil (Corregido para TypeScript y ESLint)
-      const ua = navigator.userAgent || navigator.vendor || (window as Window & { opera?: string }).opera || '';
-      if (ua.indexOf("FBAN") > -1 || ua.indexOf("FBAV") > -1 || ua.indexOf("Instagram") > -1) {
-          setIsMobileBrowser(true);
-      }
     };
-
     initApp();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
     });
-    
     return () => subscription.unsubscribe();
   }, [fetchPhotos]);
+
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (!files || files.length === 0 || !user) return; 
+    if (!files || files.length === 0 || !user || !currentUploadCategory) return; 
 
     setIsUploading(true);
-    const toastId = toast.loading(`Subiendo ${files.length} fotos a ${uploadCategory}...`);
+    const toastId = toast.loading(`Subiendo ${files.length} foto(s)...`);
     const uploadUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
 
     try {
@@ -112,12 +106,12 @@ export default function Home() {
       });
 
       const uploadedUrls = await Promise.all(uploadPromises);
-      const photosToInsert = uploadedUrls.map(url => ({ user_id: user.id, image_url: url, status: 'aprobado', category: uploadCategory }));
+      const photosToInsert = uploadedUrls.map(url => ({ user_id: user.id, image_url: url, status: 'aprobado', category: currentUploadCategory }));
 
       await supabase.from('photos').insert(photosToInsert);
       toast.success('¡Fotos subidas con éxito!', { id: toastId });
       fetchPhotos();
-      setActiveCategory(uploadCategory);
+      setActiveCategory(currentUploadCategory);
     } catch (error) {
       toast.error('Error al subir fotos.', { id: toastId });
     } finally {
@@ -129,7 +123,10 @@ export default function Home() {
   const handleDeletePhoto = async (id: string) => {
     if(!confirm('¿Borrar esta foto de la galería pública?')) return;
     const { error } = await supabase.from('photos').delete().eq('id', id);
-    if (!error) setPhotos(photos.filter(p => p.id !== id));
+    if (!error) {
+       setPhotos(photos.filter(p => p.id !== id));
+       setUserPhotos(userPhotos.filter(p => p.id !== id)); 
+    }
   };
 
   const openUserGallery = (userId: string) => {
@@ -140,34 +137,57 @@ export default function Home() {
   };
 
   const openCollageGenerator = () => {
-    const availablePhotos = activeCategory === 'todos' ? photos : photos.filter(p => p.category === activeCategory);
-    if (availablePhotos.length < 3) return toast.error('Se necesitan al menos 3 fotos en esta categoría.'); // Reducido a 3
-    setCollagePhotos([...availablePhotos].sort(() => 0.5 - Math.random()).slice(0, 3)); // Usaremos 3 fotos para mejor diseño
-    setCollageStyleType(Math.floor(Math.random() * 2) + 1); // Solo 2 estilos (Blanco y Negro)
+    const availablePhotos = selectedUserId 
+      ? userPhotos 
+      : (activeCategory === 'todos' ? photos : photos.filter(p => p.category === activeCategory));
+
+    if (availablePhotos.length < 3) return toast.error('Se necesitan al menos 3 fotos para el collage.'); 
+    setCollagePhotos([...availablePhotos].sort(() => 0.5 - Math.random()).slice(0, 3)); 
+    setCollageStyleType(Math.floor(Math.random() * 2) + 1); 
     setIsCollageOpen(true);
+  };
+
+  const downloadIndividualPhoto = async (url: string) => {
+    const toastId = toast.loading('Preparando descarga...');
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const file = new File([blob], `congreso-foto-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Foto Congreso ARQ' });
+        toast.success('¡Listo!', { id: toastId });
+      } else {
+        saveAs(blob, `congreso-foto-${Date.now()}.jpg`);
+        toast.success('¡Descargada!', { id: toastId });
+      }
+    } catch (e) {
+      saveAs(url, `congreso-foto-${Date.now()}.jpg`);
+      toast.success('¡Descargada!', { id: toastId });
+    }
   };
 
   const downloadCollage = async () => {
     if (!collageRef.current) return;
     setIsDownloading(true);
     try {
-      const dataUrl = await toJpeg(collageRef.current, { quality: 1.0, pixelRatio: 2 }); // Mejor calidad
-      
-      if (isMobileBrowser) {
-          // Si está en IG/FB, muestra la imagen en pantalla completa para que mantenga presionado y guarde
-          const newWindow = window.open();
-          if(newWindow) {
-              newWindow.document.write(`<img src="${dataUrl}" style="width:100%; height:auto;" /> <br/> <p style="text-align:center; font-family:sans-serif; margin-top:20px;">Mantén presionada la imagen para guardarla.</p>`);
-          } else {
-              toast.error("Por favor, abre la página en Chrome o Safari para descargar.");
-          }
-      } else {
-          // Descarga normal forzada con file-saver
+      const dataUrl = await toJpeg(collageRef.current, { quality: 1.0, pixelRatio: 3 }); 
+      try {
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        const file = new File([blob], `congreso-arq-collage-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Congreso ARQ 2026' });
+          toast.success('¡Acción completada!');
+        } else {
           saveAs(dataUrl, `congreso-arq-${Date.now()}.jpg`);
-          toast.success('¡Guardado! Listo para tus Stories 📸');
+          toast.success('¡Guardado en tu dispositivo!');
+        }
+      } catch (shareError) {
+        saveAs(dataUrl, `congreso-arq-${Date.now()}.jpg`);
+        toast.success('¡Guardado en tu dispositivo!');
       }
     } catch (err) {
-      toast.error('Error al procesar la imagen.');
+      toast.error('Error al generar la imagen.');
     } finally { 
       setIsDownloading(false); 
     }
@@ -182,11 +202,9 @@ export default function Home() {
       {/* CABECERA */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-gray-200 shadow-sm">
         <div className="p-4 flex justify-between items-center max-w-7xl mx-auto">
-            
             <div className="flex items-center gap-3">
                {/* eslint-disable-next-line @next/next/no-img-element */}
                <img src="/logo-arq.png" alt="ARQ" className="h-10 md:h-12 object-contain" />
-               
                <div className="hidden sm:flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100">
                   <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -194,7 +212,6 @@ export default function Home() {
                   </span>
                   <span className="text-[10px] font-black tracking-widest uppercase">En Vivo</span>
                </div>
-
                <div className="hidden sm:block border-l-2 border-gray-300 pl-3">
                  {/* eslint-disable-next-line @next/next/no-img-element */}
                  <img src="/logo-dia.png" alt="Día del Arquitecto" className="h-8 object-contain" />
@@ -245,7 +262,7 @@ export default function Home() {
       <section className="p-4 max-w-7xl mx-auto flex-1 w-full">
         <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
           {displayedPhotos.map((photo, index) => (
-            <div key={photo.id} onClick={() => openUserGallery(photo.user_id)} className={`relative break-inside-avoid w-full rounded-2xl overflow-hidden bg-gray-200 group cursor-pointer ${index % 3 === 0 ? 'h-80' : 'h-64'}`}>
+            <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-2xl overflow-hidden bg-gray-200 group cursor-pointer ${index % 3 === 0 ? 'h-80' : 'h-64'}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={photo.image_url} alt="Evento" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
             </div>
@@ -266,12 +283,12 @@ export default function Home() {
       </footer>
 
       {/* ZONA SUBIDA */}
-      {user && !isAdminView && (
+      {user && (!isAdminView && unlockedCategories.length > 0) && (
         <div className="fixed bottom-6 left-0 right-0 flex flex-col items-center z-30 pointer-events-none gap-3">
           <div className="pointer-events-auto bg-white/95 shadow-lg rounded-full px-4 py-2 flex items-center gap-2 text-sm border border-gray-200">
              <span className="font-bold text-gray-500 text-xs">Día:</span>
-             <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)} className="bg-transparent font-bold outline-none text-gray-900 text-xs cursor-pointer">
-               {CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)).map(c => (
+             <select value={currentUploadCategory} onChange={(e) => setUploadCategory(e.target.value)} className="bg-transparent font-bold outline-none text-gray-900 text-xs cursor-pointer">
+               {unlockedCategories.map(c => (
                  <option key={c.id} value={c.id}>{c.label}</option>
                ))}
              </select>
@@ -284,90 +301,158 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL COLLAGE REDISEÑADO */}
+      {/* ================= MODALES ================= */}
+
+      {/* 1. MODAL FOTO EN PANTALLA COMPLETA */}
+      {selectedPhoto && (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm">
+           <div className="flex justify-between items-center p-4">
+              {!isAdminView ? (
+                 <div 
+                    className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 px-3 py-2 rounded-full transition-colors"
+                    onClick={() => { openUserGallery(selectedPhoto.user_id); setSelectedPhoto(null); }}
+                 >
+                    <ImageIcon size={16} className="text-white" />
+                    <span className="text-white text-xs font-bold tracking-wide">Galería del autor</span>
+                 </div>
+              ) : (<div></div>)}
+              
+              <div className="flex items-center gap-3">
+                 <button onClick={() => downloadIndividualPhoto(selectedPhoto.image_url)} className="p-2 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors">
+                    <Download size={20} />
+                 </button>
+                 {isAdminView && (
+                    <button onClick={() => { handleDeletePhoto(selectedPhoto.id); setSelectedPhoto(null); }} className="p-2 bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-full transition-colors">
+                       <Trash2 size={20} />
+                    </button>
+                 )}
+                 <button onClick={() => setSelectedPhoto(null)} className="p-2 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors">
+                    <X size={20} />
+                 </button>
+              </div>
+           </div>
+           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+               {/* eslint-disable-next-line @next/next/no-img-element */}
+               <img src={selectedPhoto.image_url} alt="Foto grande" className="max-w-full max-h-full object-contain rounded-md shadow-2xl" />
+           </div>
+        </div>
+      )}
+
+      {/* 2. MODAL GALERÍA DE USUARIO */}
+      {selectedUserId && (
+        <div className="fixed inset-0 z-[65] flex flex-col bg-gray-50">
+          <header className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-gray-200 p-4 flex justify-between items-center z-10 shadow-sm">
+            <div className="flex items-center gap-3">
+               {/* eslint-disable-next-line @next/next/no-img-element */}
+               <img src={(selectedUserMeta?.avatar_url as string) || '/logo-arq.png'} alt="Avatar" className="w-10 h-10 rounded-full border border-gray-200 object-contain" />
+               <div>
+                  <h2 className="font-bold text-gray-900 leading-tight">{(selectedUserMeta?.full_name as string) || 'Asistente'}</h2>
+                  <p className="text-xs text-gray-500">{userPhotos.length} fotos compartidas</p>
+               </div>
+            </div>
+            <div className="flex items-center gap-2">
+               <button onClick={openCollageGenerator} className="bg-[#bda15f] text-white p-2 rounded-full font-bold shadow-md hover:bg-[#a68c4e]">
+                  <Wand2 size={16} />
+               </button>
+               <button onClick={() => setSelectedUserId(null)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-full transition-colors">
+                  <X size={20} />
+               </button>
+            </div>
+          </header>
+          
+          <div className="p-4 flex-1 overflow-y-auto">
+             <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4 max-w-7xl mx-auto">
+                {userPhotos.map((photo, index) => (
+                  <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-xl overflow-hidden bg-gray-200 cursor-pointer group ${index % 2 === 0 ? 'h-64' : 'h-48'}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photo.image_url} alt="Evento" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  </div>
+                ))}
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. MODAL COLLAGE */}
       {isCollageOpen && (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-black/95">
-            <div className="flex justify-end p-4">
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 overflow-y-auto">
+            <div className="flex justify-end p-4 shrink-0">
                 <button onClick={() => setIsCollageOpen(false)} className="p-2 bg-white/10 text-white rounded-full"><X size={20} /></button>
             </div>
             
-            <div className="flex-1 flex items-center justify-center p-4">
-               {/* Contenedor principal 9:16 */}
-               <div ref={collageRef} className="relative w-full max-w-[360px] aspect-[9/16] overflow-hidden shadow-2xl rounded-sm bg-white">
+            <div className="flex-1 flex flex-col items-center justify-center p-4 shrink-0">
+               <div ref={collageRef} className="relative w-full max-w-[320px] md:max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
                   
-                  {/* ESTILO 1: POLAROID BLANCO (ESTÉTICO) */}
                   {collageStyleType === 1 && (
-                    <div className="absolute inset-0 bg-[#FAFAFA] flex flex-col p-5">
-                      {/* Logo Superior */}
-                      <div className="h-[12%] flex items-center justify-center mb-3">
+                    <div className="absolute inset-0 bg-[#ffffff] flex flex-col p-4 border border-gray-100">
+                      <div className="h-[12%] flex items-center justify-center mb-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain opacity-90" />
+                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain" />
                       </div>
-                      
-                      {/* Área de fotos (3 fotos estilo polaroid) */}
-                      <div className="flex-1 flex flex-col gap-3">
-                        {/* Foto principal grande */}
-                        <div className="flex-1 w-full bg-gray-200 rounded-md overflow-hidden shadow-sm">
+                      <div className="flex-1 grid grid-rows-3 gap-3">
+                        <div className="row-span-2 w-full rounded-xl overflow-hidden shadow-sm">
                            {/* eslint-disable-next-line @next/next/no-img-element */}
                            <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img1" />
                         </div>
-                        {/* Dos fotos inferiores */}
-                        <div className="h-[35%] w-full flex gap-3">
-                           <div className="flex-1 bg-gray-200 rounded-md overflow-hidden shadow-sm">
+                        <div className="row-span-1 grid grid-cols-2 gap-3">
+                           <div className="rounded-xl overflow-hidden shadow-sm">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img2" />
                            </div>
-                           <div className="flex-1 bg-gray-200 rounded-md overflow-hidden shadow-sm">
+                           <div className="rounded-xl overflow-hidden shadow-sm">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img3" />
                            </div>
                         </div>
                       </div>
-
-                      {/* Logo Inferior */}
-                      <div className="h-[10%] mt-4 flex items-end justify-center">
+                      <div className="h-[8%] mt-4 flex items-center justify-between px-2">
+                        <div className="text-[9px] text-gray-400 font-bold tracking-[0.2em] uppercase">Guasave, Sinaloa</div>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/logo-arq.png" alt="Logo" className="h-4/5 object-contain opacity-80" />
                       </div>
                     </div>
                   )}
 
-                  {/* ESTILO 2: CINE OSCURO (ESTÉTICO) */}
                   {collageStyleType === 2 && (
-                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-3 border-4 border-[#0a0a0a]">
-                      <div className="flex-1 flex flex-col gap-2">
-                        {collagePhotos.slice(0,3).map((p, i) => (
-                          <div key={p.id} className="flex-1 relative overflow-hidden rounded-sm group">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.image_url} crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover sepia-[.15]" alt={`img${i}`} />
-                          </div>
-                        ))}
+                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-4 border border-[#222]">
+                      <div className="h-[12%] flex items-center justify-center mb-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain invert opacity-90" />
                       </div>
-                      {/* Bandeja inferior con logos centrados */}
-                      <div className="h-[12%] mt-2 flex items-center justify-center gap-4 bg-[#111] rounded-sm px-4">
-                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                         <img src="/logo-dia.png" alt="Logo" className="h-2/5 object-contain invert opacity-80" />
-                         <div className="w-[1px] h-1/2 bg-gray-700"></div>
-                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                         <img src="/logo-arq.png" alt="Logo" className="h-2/5 object-contain invert opacity-80" />
+                      <div className="flex-1 grid grid-rows-3 gap-3">
+                        <div className="row-span-2 w-full rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                           {/* eslint-disable-next-line @next/next/no-img-element */}
+                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img1" />
+                        </div>
+                        <div className="row-span-1 grid grid-cols-2 gap-3">
+                           <div className="rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                             {/* eslint-disable-next-line @next/next/no-img-element */}
+                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img2" />
+                           </div>
+                           <div className="rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                             {/* eslint-disable-next-line @next/next/no-img-element */}
+                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img3" />
+                           </div>
+                        </div>
+                      </div>
+                      <div className="h-[8%] mt-4 flex items-center justify-between px-2">
+                        <div className="text-[9px] text-gray-500 font-bold tracking-[0.2em] uppercase">Guasave, Sinaloa</div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/logo-arq.png" alt="Logo" className="h-4/5 object-contain invert opacity-70" />
                       </div>
                     </div>
                   )}
                </div>
             </div>
 
-            {/* AVISO MÓVIL SI APLICA */}
-            {isMobileBrowser && (
-               <div className="px-6 pb-2 text-center text-gray-400 text-xs flex items-center justify-center gap-1">
-                 <Info size={12}/> Si usas navegador de app, se abrirá en pestaña nueva para guardar.
-               </div>
-            )}
-
-            <div className="p-6 flex justify-center pb-10">
+            <div className="p-6 shrink-0 flex justify-center pb-10 flex-col items-center gap-3">
                 <button onClick={downloadCollage} disabled={isDownloading} className="bg-[#bda15f] text-white px-8 py-4 rounded-full font-bold shadow-xl w-full max-w-xs flex justify-center items-center gap-2">
                    {isDownloading ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />} 
-                   DESCARGAR
+                   GUARDAR O COMPARTIR
                 </button>
+                <span className="text-[10px] text-gray-400 font-medium tracking-wide">
+                   Se abrirá el menú de tu teléfono
+                </span>
             </div>
         </div>
       )}
