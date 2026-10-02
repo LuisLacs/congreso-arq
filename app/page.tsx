@@ -18,7 +18,7 @@ interface Photo {
   user_metadata?: Record<string, unknown>; 
 }
 
-const ADMIN_EMAIL = "tu_correo@gmail.com"; 
+const ADMIN_EMAIL = "luislacsgamer@gmail.com"; 
 
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05T00:00:00-07:00' },
@@ -53,7 +53,6 @@ export default function Home() {
     return today >= unlockDate;
   };
 
-  // NUEVO: Filtramos días desbloqueados y determinamos la categoría automáticamente (Estado Derivado)
   const unlockedCategories = CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate));
   const currentUploadCategory = unlockedCategories.find(c => c.id === uploadCategory) ? uploadCategory : (unlockedCategories[0]?.id || '');
 
@@ -136,13 +135,16 @@ export default function Home() {
     setSelectedUserMeta(user?.id === userId ? user.user_metadata : { full_name: "Asistente del Congreso" });
   };
 
+  // NUEVO LÓGICA: Solo usa fotos propias para el collage
   const openCollageGenerator = () => {
-    const availablePhotos = selectedUserId 
+    // Busca las fotos del usuario seleccionado (si estás en su perfil) o tus propias fotos (si estás en el feed)
+    const targetPhotos = selectedUserId 
       ? userPhotos 
-      : (activeCategory === 'todos' ? photos : photos.filter(p => p.category === activeCategory));
+      : photos.filter(p => p.user_id === user?.id);
 
-    if (availablePhotos.length < 3) return toast.error('Se necesitan al menos 3 fotos para el collage.'); 
-    setCollagePhotos([...availablePhotos].sort(() => 0.5 - Math.random()).slice(0, 3)); 
+    if (targetPhotos.length < 3) return toast.error('Sube al menos 3 fotos tuyas para generar tu collage.'); 
+    
+    setCollagePhotos([...targetPhotos].sort(() => 0.5 - Math.random()).slice(0, 3)); 
     setCollageStyleType(Math.floor(Math.random() * 2) + 1); 
     setIsCollageOpen(true);
   };
@@ -224,9 +226,10 @@ export default function Home() {
                       <ShieldAlert size={18} />
                   </button>
               )}
-              {!isAdminView && (
+              {/* Botón Mi Collage: Requiere estar logueado */}
+              {user && !isAdminView && (
                   <button onClick={openCollageGenerator} className="bg-[#bda15f] text-white p-2 sm:px-4 sm:py-2 rounded-full font-bold shadow-md hover:bg-[#a68c4e]">
-                      <Wand2 size={18} /> <span className="hidden sm:inline text-sm ml-1">Collage</span>
+                      <Wand2 size={18} /> <span className="hidden sm:inline text-sm ml-1">Mi Collage</span>
                   </button>
               )}
               {user ? (
@@ -373,7 +376,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. MODAL COLLAGE */}
+      {/* 3. MODAL COLLAGE (RESCATADO A PROPORCIONES PERFECTAS) */}
       {isCollageOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 overflow-y-auto">
             <div className="flex justify-end p-4 shrink-0">
@@ -381,25 +384,26 @@ export default function Home() {
             </div>
             
             <div className="flex-1 flex flex-col items-center justify-center p-4 shrink-0">
-               <div ref={collageRef} className="relative w-full max-w-[320px] md:max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
+               <div ref={collageRef} className="relative w-[85vw] max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
                   
+                  {/* ESTILO 1: EDITORIAL BLANCO */}
                   {collageStyleType === 1 && (
                     <div className="absolute inset-0 bg-[#ffffff] flex flex-col p-4 border border-gray-100">
-                      <div className="h-[12%] flex items-center justify-center mb-2">
+                      <div className="h-[10%] flex items-center justify-center mb-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/logo-dia.png" alt="Logo" className="h-full object-contain" />
                       </div>
-                      <div className="flex-1 grid grid-rows-3 gap-3">
-                        <div className="row-span-2 w-full rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex-1 flex flex-col gap-3">
+                        <div className="flex-[2] w-full rounded-xl overflow-hidden shadow-sm">
                            {/* eslint-disable-next-line @next/next/no-img-element */}
                            <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img1" />
                         </div>
-                        <div className="row-span-1 grid grid-cols-2 gap-3">
-                           <div className="rounded-xl overflow-hidden shadow-sm">
+                        <div className="flex-[1] w-full flex gap-3">
+                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img2" />
                            </div>
-                           <div className="rounded-xl overflow-hidden shadow-sm">
+                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img3" />
                            </div>
@@ -413,23 +417,24 @@ export default function Home() {
                     </div>
                   )}
 
+                  {/* ESTILO 2: EDITORIAL OSCURO */}
                   {collageStyleType === 2 && (
                     <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-4 border border-[#222]">
-                      <div className="h-[12%] flex items-center justify-center mb-2">
+                      <div className="h-[10%] flex items-center justify-center mb-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/logo-dia.png" alt="Logo" className="h-full object-contain invert opacity-90" />
                       </div>
-                      <div className="flex-1 grid grid-rows-3 gap-3">
-                        <div className="row-span-2 w-full rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                      <div className="flex-1 flex flex-col gap-3">
+                        <div className="flex-[2] w-full rounded-xl overflow-hidden shadow-sm border border-[#333]">
                            {/* eslint-disable-next-line @next/next/no-img-element */}
                            <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img1" />
                         </div>
-                        <div className="row-span-1 grid grid-cols-2 gap-3">
-                           <div className="rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                        <div className="flex-[1] w-full flex gap-3">
+                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm border border-[#333]">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img2" />
                            </div>
-                           <div className="rounded-xl overflow-hidden shadow-sm border border-[#333]">
+                           <div className="flex-1 rounded-xl overflow-hidden shadow-sm border border-[#333]">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover sepia-[.15]" alt="img3" />
                            </div>
