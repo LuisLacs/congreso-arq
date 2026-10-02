@@ -136,13 +136,15 @@ export default function Home() {
   };
 
   const openCollageGenerator = () => {
+    // Solo toma fotos del usuario logueado o del perfil que estés visitando
     const targetPhotos = selectedUserId 
       ? userPhotos 
       : photos.filter(p => p.user_id === user?.id);
 
-    if (targetPhotos.length < 3) return toast.error('Sube al menos 3 fotos tuyas para generar tu collage.'); 
+    // Requerimos 4 fotos para que el diseño blanco 2x2 funcione perfecto
+    if (targetPhotos.length < 4) return toast.error('Sube al menos 4 fotos tuyas para generar tu collage.'); 
     
-    setCollagePhotos([...targetPhotos].sort(() => 0.5 - Math.random()).slice(0, 3)); 
+    setCollagePhotos([...targetPhotos].sort(() => 0.5 - Math.random()).slice(0, 4)); 
     setCollageStyleType(Math.floor(Math.random() * 2) + 1); 
     setIsCollageOpen(true);
   };
@@ -373,7 +375,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. MODAL COLLAGE (DISEÑOS ORIGINALES RECUPERADOS Y PERFECTOS) */}
+      {/* 3. MODAL COLLAGE (DISEÑOS ORIGINALES RECUPERADOS) */}
       {isCollageOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 overflow-y-auto">
             <div className="flex justify-end p-4 shrink-0">
@@ -383,69 +385,34 @@ export default function Home() {
             <div className="flex-1 flex flex-col items-center justify-center p-4 shrink-0">
                <div ref={collageRef} className="relative w-full max-w-[360px] aspect-[9/16] shrink-0 overflow-hidden shadow-2xl bg-white">
                   
-                  {/* ESTILO 1: DISEÑO BLANCO ORIGINAL (IMPECABLE) */}
+                  {/* ESTILO 1: ORIGINAL BLANCO (CUADRÍCULA 2x2) */}
                   {collageStyleType === 1 && (
-                    <div className="absolute inset-0 bg-[#f4f4f4] flex flex-col p-6 justify-between">
-                      {/* Logo Superior */}
-                      <div className="w-full flex justify-center py-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-dia.png" alt="Logo" className="h-10 object-contain" />
+                    <div className="absolute inset-0 bg-[#f4f4f4] p-4 flex flex-col relative overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/logo-dia.png" alt="Logo" className="w-3/4 mx-auto mb-4 object-contain opacity-90 relative z-10" />
+                      <div className="grid grid-cols-2 gap-2 relative z-10">
+                        {collagePhotos.slice(0,4).map((p) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={p.id} src={p.image_url} crossOrigin="anonymous" className="w-full aspect-square object-cover rounded-md shadow-sm" alt="img" />
+                        ))}
                       </div>
-                      
-                      {/* 3 Fotos en proporción fija */}
-                      <div className="w-full flex-1 flex flex-col gap-3 my-2 justify-center">
-                        <div className="w-full h-[52%] rounded-xl overflow-hidden shadow-md bg-white p-1">
-                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg" alt="img1" />
-                        </div>
-                        <div className="w-full h-[36%] flex gap-3">
-                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-white p-1">
-                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg" alt="img2" />
-                           </div>
-                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-white p-1">
-                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg" alt="img3" />
-                           </div>
-                        </div>
-                      </div>
-
-                      {/* Logo Inferior */}
-                      <div className="w-full flex justify-center py-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-arq.png" alt="Logo" className="h-8 object-contain opacity-90" />
-                      </div>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/logo-arq.png" alt="Logo" className="w-24 absolute bottom-6 right-6 opacity-80 z-0" />
                     </div>
                   )}
 
-                  {/* ESTILO 2: DISEÑO OSCURO ORIGINAL (TIRA DE CINE CLÁSICA) */}
+                  {/* ESTILO 2: ORIGINAL OSCURO APILADO (3 FOTOS) */}
                   {collageStyleType === 2 && (
-                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-6 justify-between">
-                      <div className="w-full flex justify-center py-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-dia.png" alt="Logo" className="h-10 object-contain invert opacity-90" />
+                    <div className="absolute inset-0 bg-gray-900 flex flex-col p-4 justify-between">
+                      <div className="flex-1 flex flex-col gap-2 justify-center h-full">
+                        {collagePhotos.slice(0,3).map((p) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={p.id} src={p.image_url} crossOrigin="anonymous" className="w-full h-1/3 object-cover sepia-[.20] rounded-sm" alt="img" />
+                        ))}
                       </div>
-                      
-                      <div className="w-full flex-1 flex flex-col gap-3 my-2 justify-center">
-                        <div className="w-full h-[52%] rounded-xl overflow-hidden shadow-md bg-[#1a1a1a] p-1 border border-[#222]">
-                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg sepia-[.15]" alt="img1" />
-                        </div>
-                        <div className="w-full h-[36%] flex gap-3">
-                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-[#1a1a1a] p-1 border border-[#222]">
-                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg sepia-[.15]" alt="img2" />
-                           </div>
-                           <div className="w-1/2 h-full rounded-xl overflow-hidden shadow-md bg-[#1a1a1a] p-1 border border-[#222]">
-                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover rounded-lg sepia-[.15]" alt="img3" />
-                           </div>
-                        </div>
-                      </div>
-
-                      <div className="w-full flex justify-center py-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo-arq.png" alt="Logo" className="h-8 object-contain invert opacity-80" />
+                      <div className="pt-4 flex justify-center bg-gray-900">
+                         {/* eslint-disable-next-line @next/next/no-img-element */}
+                         <img src="/logo-arq.png" alt="Logo" className="h-10 object-contain invert" />
                       </div>
                     </div>
                   )}
