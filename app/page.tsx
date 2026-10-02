@@ -1,11 +1,12 @@
 'use client'; 
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Loader2, Image as ImageIcon, X, Wand2, Download, Trash2, ShieldAlert, Lock } from 'lucide-react';
+import { Plus, Loader2, X, Wand2, Download, ShieldAlert, Lock, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase'; 
 import { User } from '@supabase/supabase-js';
 import { Toaster, toast } from 'sonner';
 import { toJpeg } from 'html-to-image';
+import { saveAs } from 'file-saver'; // NUEVO: Importación para descargas móviles
 
 interface Photo {
   id: string;
@@ -17,12 +18,8 @@ interface Photo {
   user_metadata?: Record<string, unknown>; 
 }
 
-// ==========================================
-// CONFIGURACIÓN DEL CONGRESO
-// ==========================================
 const ADMIN_EMAIL = "tu_correo@gmail.com"; 
 
-// Agregamos la fecha exacta de desbloqueo (Hora Sinaloa UTC-7)
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05T00:00:00-07:00' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05T00:00:00-07:00' },
@@ -46,11 +43,11 @@ export default function Home() {
   const [collageStyleType, setCollageStyleType] = useState<number>(1);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
+  const [isMobileBrowser, setIsMobileBrowser] = useState(false); // NUEVO: Detector de navegador
   const collageRef = useRef<HTMLDivElement>(null); 
 
-  // Función para saber si el día ya se desbloqueó
   const isCategoryUnlocked = (dateString: string) => {
-    if (isAdminView) return true; // El admin no tiene restricciones
+    if (isAdminView) return true; 
     const today = new Date();
     const unlockDate = new Date(dateString);
     return today >= unlockDate;
@@ -67,15 +64,21 @@ export default function Home() {
     return () => { document.body.style.overflow = 'auto'; };
   }, [selectedUserId, isCollageOpen, isAdminView]);
 
- useEffect(() => {
+  useEffect(() => {
     const initApp = async () => {
       // 1. Verificamos el usuario
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       if(session?.user?.email === ADMIN_EMAIL) setIsAdminView(true);
       
-      // 2. Llamamos a las fotos DENTRO de la función asíncrona para evitar el error de ESLint
+      // 2. Cargamos las fotos
       await fetchPhotos();
+
+      // 3. Detección de navegador móvil (Corregido para TypeScript y ESLint)
+      const ua = navigator.userAgent || navigator.vendor || (window as Window & { opera?: string }).opera || '';
+      if (ua.indexOf("FBAN") > -1 || ua.indexOf("FBAV") > -1 || ua.indexOf("Instagram") > -1) {
+          setIsMobileBrowser(true);
+      }
     };
 
     initApp();
@@ -138,9 +141,9 @@ export default function Home() {
 
   const openCollageGenerator = () => {
     const availablePhotos = activeCategory === 'todos' ? photos : photos.filter(p => p.category === activeCategory);
-    if (availablePhotos.length < 4) return toast.error('Se necesitan al menos 4 fotos en esta categoría.');
-    setCollagePhotos([...availablePhotos].sort(() => 0.5 - Math.random()).slice(0, 4));
-    setCollageStyleType(Math.floor(Math.random() * 3) + 1);
+    if (availablePhotos.length < 3) return toast.error('Se necesitan al menos 3 fotos en esta categoría.'); // Reducido a 3
+    setCollagePhotos([...availablePhotos].sort(() => 0.5 - Math.random()).slice(0, 3)); // Usaremos 3 fotos para mejor diseño
+    setCollageStyleType(Math.floor(Math.random() * 2) + 1); // Solo 2 estilos (Blanco y Negro)
     setIsCollageOpen(true);
   };
 
@@ -148,13 +151,26 @@ export default function Home() {
     if (!collageRef.current) return;
     setIsDownloading(true);
     try {
-      const dataUrl = await toJpeg(collageRef.current, { quality: 0.95 });
-      const link = document.createElement('a');
-      link.download = `congreso-arq-${Date.now()}.jpeg`;
-      link.href = dataUrl;
-      link.click();
-      toast.success('¡Guardado! Listo para tus Stories 📸');
-    } finally { setIsDownloading(false); }
+      const dataUrl = await toJpeg(collageRef.current, { quality: 1.0, pixelRatio: 2 }); // Mejor calidad
+      
+      if (isMobileBrowser) {
+          // Si está en IG/FB, muestra la imagen en pantalla completa para que mantenga presionado y guarde
+          const newWindow = window.open();
+          if(newWindow) {
+              newWindow.document.write(`<img src="${dataUrl}" style="width:100%; height:auto;" /> <br/> <p style="text-align:center; font-family:sans-serif; margin-top:20px;">Mantén presionada la imagen para guardarla.</p>`);
+          } else {
+              toast.error("Por favor, abre la página en Chrome o Safari para descargar.");
+          }
+      } else {
+          // Descarga normal forzada con file-saver
+          saveAs(dataUrl, `congreso-arq-${Date.now()}.jpg`);
+          toast.success('¡Guardado! Listo para tus Stories 📸');
+      }
+    } catch (err) {
+      toast.error('Error al procesar la imagen.');
+    } finally { 
+      setIsDownloading(false); 
+    }
   };
 
   const displayedPhotos = activeCategory === 'todos' ? photos : photos.filter(p => p.category === activeCategory);
@@ -163,16 +179,14 @@ export default function Home() {
     <main className="min-h-screen bg-gray-50 text-gray-900 pb-40 font-sans flex flex-col">
       <Toaster theme="light" position="top-center" />
 
-      {/* CABECERA CON LOGOS OFICIALES */}
+      {/* CABECERA */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-gray-200 shadow-sm">
         <div className="p-4 flex justify-between items-center max-w-7xl mx-auto">
             
-            {/* SECCIÓN IZQUIERDA: Logos + En Vivo */}
             <div className="flex items-center gap-3">
                {/* eslint-disable-next-line @next/next/no-img-element */}
                <img src="/logo-arq.png" alt="ARQ" className="h-10 md:h-12 object-contain" />
                
-               {/* NUEVO: Indicador de En Vivo palpitante */}
                <div className="hidden sm:flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100">
                   <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -187,7 +201,6 @@ export default function Home() {
                </div>
             </div>
             
-            {/* SECCIÓN DERECHA: Botones */}
             <div className="flex items-center gap-2">
               {user?.email === ADMIN_EMAIL && (
                   <button onClick={() => setIsAdminView(!isAdminView)} className={`${isAdminView ? 'bg-gray-800' : 'bg-red-500'} text-white p-2 rounded-full font-bold shadow-md`}>
@@ -208,7 +221,6 @@ export default function Home() {
             </div>
         </div>
 
-        {/* NAVEGACIÓN DE DÍAS CON CANDADOS */}
         {!isAdminView && (
             <div className="flex overflow-x-auto gap-2 px-4 py-3 bg-gray-50 border-t border-gray-100 scrollbar-hide max-w-7xl mx-auto">
                 {CATEGORIES.map(c => {
@@ -241,7 +253,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* FOOTER CON LOGOS INSTITUCIONALES */}
+      {/* FOOTER */}
       <footer className="bg-white border-t border-gray-200 py-6 mt-10">
          <div className="max-w-4xl mx-auto px-4 flex flex-wrap justify-center items-center gap-6 md:gap-12 opacity-70 grayscale hover:grayscale-0 transition-all duration-300">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -253,7 +265,7 @@ export default function Home() {
          </div>
       </footer>
 
-      {/* ZONA INFERIOR DE SUBIDA (Solo muestra días desbloqueados) */}
+      {/* ZONA SUBIDA */}
       {user && !isAdminView && (
         <div className="fixed bottom-6 left-0 right-0 flex flex-col items-center z-30 pointer-events-none gap-3">
           <div className="pointer-events-auto bg-white/95 shadow-lg rounded-full px-4 py-2 flex items-center gap-2 text-sm border border-gray-200">
@@ -272,48 +284,86 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL COLLAGE (CON LOGOS INTEGADOS) */}
+      {/* MODAL COLLAGE REDISEÑADO */}
       {isCollageOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/95">
             <div className="flex justify-end p-4">
                 <button onClick={() => setIsCollageOpen(false)} className="p-2 bg-white/10 text-white rounded-full"><X size={20} /></button>
             </div>
+            
             <div className="flex-1 flex items-center justify-center p-4">
-               <div ref={collageRef} className="relative w-full max-w-sm aspect-[9/16] bg-white overflow-hidden">
+               {/* Contenedor principal 9:16 */}
+               <div ref={collageRef} className="relative w-full max-w-[360px] aspect-[9/16] overflow-hidden shadow-2xl rounded-sm bg-white">
                   
+                  {/* ESTILO 1: POLAROID BLANCO (ESTÉTICO) */}
                   {collageStyleType === 1 && (
-                    <div className="absolute inset-0 bg-[#f4f4f4] p-4">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/logo-dia.png" alt="Logo" className="w-3/4 mx-auto mb-4 object-contain opacity-90" />
-                      <div className="grid grid-cols-2 gap-2">
-                        {collagePhotos.slice(0,4).map((p) => (
-                           // eslint-disable-next-line @next/next/no-img-element
-                          <img key={p.id} src={p.image_url} crossOrigin="anonymous" className="w-full aspect-square object-cover rounded-md shadow-sm" alt="img" />
-                        ))}
+                    <div className="absolute inset-0 bg-[#FAFAFA] flex flex-col p-5">
+                      {/* Logo Superior */}
+                      <div className="h-[12%] flex items-center justify-center mb-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/logo-dia.png" alt="Logo" className="h-full object-contain opacity-90" />
                       </div>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/logo-arq.png" alt="Logo" className="w-24 absolute bottom-6 right-6 opacity-80" />
+                      
+                      {/* Área de fotos (3 fotos estilo polaroid) */}
+                      <div className="flex-1 flex flex-col gap-3">
+                        {/* Foto principal grande */}
+                        <div className="flex-1 w-full bg-gray-200 rounded-md overflow-hidden shadow-sm">
+                           {/* eslint-disable-next-line @next/next/no-img-element */}
+                           <img src={collagePhotos[0]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img1" />
+                        </div>
+                        {/* Dos fotos inferiores */}
+                        <div className="h-[35%] w-full flex gap-3">
+                           <div className="flex-1 bg-gray-200 rounded-md overflow-hidden shadow-sm">
+                             {/* eslint-disable-next-line @next/next/no-img-element */}
+                             <img src={collagePhotos[1]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img2" />
+                           </div>
+                           <div className="flex-1 bg-gray-200 rounded-md overflow-hidden shadow-sm">
+                             {/* eslint-disable-next-line @next/next/no-img-element */}
+                             <img src={collagePhotos[2]?.image_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="img3" />
+                           </div>
+                        </div>
+                      </div>
+
+                      {/* Logo Inferior */}
+                      <div className="h-[10%] mt-4 flex items-end justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/logo-arq.png" alt="Logo" className="h-4/5 object-contain opacity-80" />
+                      </div>
                     </div>
                   )}
 
-                  {/* Los otros 2 estilos se mantienen con el diseño de arquitectura pero adaptados al tamaño */}
-                  {collageStyleType !== 1 && (
-                    <div className="absolute inset-0 bg-gray-900 flex flex-col p-4 justify-between">
-                      <div className="flex-1 flex flex-col gap-2 justify-center">
-                        {collagePhotos.slice(0,3).map((p) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={p.id} src={p.image_url} crossOrigin="anonymous" className="w-full h-1/3 object-cover sepia-[.20] rounded-sm" alt="img" />
+                  {/* ESTILO 2: CINE OSCURO (ESTÉTICO) */}
+                  {collageStyleType === 2 && (
+                    <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col p-3 border-4 border-[#0a0a0a]">
+                      <div className="flex-1 flex flex-col gap-2">
+                        {collagePhotos.slice(0,3).map((p, i) => (
+                          <div key={p.id} className="flex-1 relative overflow-hidden rounded-sm group">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.image_url} crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover sepia-[.15]" alt={`img${i}`} />
+                          </div>
                         ))}
                       </div>
-                      <div className="pt-4 flex justify-center bg-gray-900">
+                      {/* Bandeja inferior con logos centrados */}
+                      <div className="h-[12%] mt-2 flex items-center justify-center gap-4 bg-[#111] rounded-sm px-4">
                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                         <img src="/logo-arq.png" alt="Logo" className="h-10 object-contain invert" />
+                         <img src="/logo-dia.png" alt="Logo" className="h-2/5 object-contain invert opacity-80" />
+                         <div className="w-[1px] h-1/2 bg-gray-700"></div>
+                         {/* eslint-disable-next-line @next/next/no-img-element */}
+                         <img src="/logo-arq.png" alt="Logo" className="h-2/5 object-contain invert opacity-80" />
                       </div>
                     </div>
                   )}
                </div>
             </div>
-            <div className="p-6 flex justify-center">
+
+            {/* AVISO MÓVIL SI APLICA */}
+            {isMobileBrowser && (
+               <div className="px-6 pb-2 text-center text-gray-400 text-xs flex items-center justify-center gap-1">
+                 <Info size={12}/> Si usas navegador de app, se abrirá en pestaña nueva para guardar.
+               </div>
+            )}
+
+            <div className="p-6 flex justify-center pb-10">
                 <button onClick={downloadCollage} disabled={isDownloading} className="bg-[#bda15f] text-white px-8 py-4 rounded-full font-bold shadow-xl w-full max-w-xs flex justify-center items-center gap-2">
                    {isDownloading ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />} 
                    DESCARGAR
