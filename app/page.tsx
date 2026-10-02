@@ -194,24 +194,7 @@ export default function Home() {
               )}
             </div>
         </div>
-        <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-arq.png" alt="ARQ" className="h-10 md:h-12 object-contain" />
-          
-          {/* NUEVO: Indicador de En Vivo palpitante */}
-          <div className="hidden sm:flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-              </span>
-              <span className="text-[10px] font-black tracking-widest uppercase">En Vivo</span>
-          </div>
-
-          <div className="hidden md:block border-l-2 border-gray-300 pl-3 ml-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-dia.png" alt="Día del Arquitecto" className="h-8 object-contain" />
-          </div>
-        </div>
+        
 
         {/* NAVEGACIÓN DE DÍAS CON CANDADOS */}
         {!isAdminView && (
@@ -232,6 +215,24 @@ export default function Home() {
                 })}
             </div>
         )}
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-arq.png" alt="ARQ" className="h-10 md:h-12 object-contain" />
+          
+          {/* NUEVO: Indicador de En Vivo palpitante */}
+          <div className="hidden sm:flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+              </span>
+              <span className="text-[10px] font-black tracking-widest uppercase">En Vivo</span>
+          </div>
+
+          <div className="hidden md:block border-l-2 border-gray-300 pl-3 ml-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-dia.png" alt="Día del Arquitecto" className="h-8 object-contain" />
+          </div>
+        </div>
       </header>
 
       {/* MURO PRINCIPAL */}
