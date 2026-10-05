@@ -24,13 +24,14 @@ const ADMIN_EMAILS = [
   "jazmincs.castro@gmail.com"
 ]; 
 
+// 1. FORMATO DE TEXTO EXACTO (YYYY-MM-DD)
 const CATEGORIES = [
-  { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05T00:00:00-07:00' },
-  { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05T00:00:00-07:00' },
-  { id: 'martes', label: 'Martes 06 - Talleres', unlockDate: '2026-10-06T00:00:00-07:00' },
-  { id: 'miercoles', label: 'Miércoles 07 - Talleres', unlockDate: '2026-10-07T00:00:00-07:00' },
-  { id: 'jueves', label: 'Jueves 08 - Congreso Día 1', unlockDate: '2026-10-08T00:00:00-07:00' },
-  { id: 'viernes', label: 'Viernes 09 - Fiesta', unlockDate: '2026-10-09T00:00:00-07:00' },
+  { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
+  { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
+  { id: 'martes', label: 'Martes 06 - Talleres', unlockDate: '2026-10-06' },
+  { id: 'miercoles', label: 'Miércoles 07 - Talleres', unlockDate: '2026-10-07' },
+  { id: 'jueves', label: 'Jueves 08 - Congreso Día 1', unlockDate: '2026-10-08' },
+  { id: 'viernes', label: 'Viernes 09 - Fiesta', unlockDate: '2026-10-09' },
 ];
 
 export default function Home() {
@@ -50,13 +51,19 @@ export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   const collageRef = useRef<HTMLDivElement>(null); 
 
+ // 3. FUNCIÓN DE CANDADO A PRUEBA DE ZONAS HORARIAS
   const isCategoryUnlocked = (dateString: string) => {
     if (isAdminView) return true; 
-    const today = new Date();
-    const unlockDate = new Date(dateString);
-    return today >= unlockDate;
+    
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    
+    // Compara "2026-10-05" >= "2026-10-05" (Siempre funcionará)
+    const todayStr = `${year}-${month}-${day}`; 
+    return todayStr >= dateString;
   };
-
   const categoriesForUpload = isAdminView 
     ? CATEGORIES.filter(c => c.id !== 'todos') 
     : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); 
