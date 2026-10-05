@@ -22,7 +22,8 @@ interface Photo {
 const ADMIN_EMAILS = [
   "luislacsgamer@gmail.com",
   "jazmincs.castro@gmail.com",
-  "jartperezgarcia@gmail.com"
+  "jartperezgarcia@gmail.com",
+  "angyomg11@gmail.com"
 ]; 
 
 // 1. FORMATO DE TEXTO EXACTO (YYYY-MM-DD)
