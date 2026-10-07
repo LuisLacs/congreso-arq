@@ -26,7 +26,7 @@ const ADMIN_EMAILS = [
   "angyomg11@gmail.com"
 ]; 
 
-// 1. FORMATO DE TEXTO EXACTO (YYYY-MM-DD)
+// FORMATO DE TEXTO EXACTO (YYYY-MM-DD)
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
@@ -35,6 +35,13 @@ const CATEGORIES = [
   { id: 'jueves', label: 'Jueves 08 - Congreso Día 1', unlockDate: '2026-10-08' },
   { id: 'viernes', label: 'Viernes 09 - Fiesta', unlockDate: '2026-10-09' },
 ];
+
+// OPTIMIZADOR DE CLOUDINARY (Baja el peso de las miniaturas un 80%)
+const getOptimizedUrl = (url: string) => {
+  if (!url || !url.includes('cloudinary.com')) return url;
+  // Inserta parámetros de compresión (calidad automática, formato auto, ancho max 600px)
+  return url.replace('/image/upload/', '/image/upload/q_auto,f_auto,w_600/');
+};
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -53,7 +60,6 @@ export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   const collageRef = useRef<HTMLDivElement>(null); 
 
- // 3. FUNCIÓN DE CANDADO A PRUEBA DE ZONAS HORARIAS
   const isCategoryUnlocked = (dateString: string) => {
     if (isAdminView) return true; 
     
@@ -62,10 +68,10 @@ export default function Home() {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     
-    // Compara "2026-10-05" >= "2026-10-05" (Siempre funcionará)
     const todayStr = `${year}-${month}-${day}`; 
     return todayStr >= dateString;
   };
+
   const categoriesForUpload = isAdminView 
     ? CATEGORIES.filter(c => c.id !== 'todos') 
     : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); 
@@ -75,7 +81,8 @@ export default function Home() {
     : (categoriesForUpload[0]?.id || '');
 
   const fetchPhotos = useCallback(async () => {
-    const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }); 
+    // OPTIMIZACIÓN: Limitamos a 300 fotos recientes para no colapsar la memoria RAM del celular
+    const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }).limit(300); 
     if (data) setPhotos(data as Photo[]);
   }, []);
 
@@ -113,17 +120,15 @@ export default function Home() {
     const uploadUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
 
     try {
-      // NUEVO: Definimos el perfil que se guardará con la foto
       let uploaderMeta = {
         full_name: user.user_metadata?.full_name || "Asistente del Congreso",
         avatar_url: user.user_metadata?.avatar_url || "/logo-arq.png"
       };
 
-      // Si quien sube es administrador, usamos un nombre oficial anónimo
       if (user.email && ADMIN_EMAILS.includes(user.email)) {
         uploaderMeta = {
           full_name: "Comité Organizador ARQ",
-          avatar_url: "/logo-arq.png" // Opcional: Puedes cambiar esto por el link directo al logo dorado si prefieres
+          avatar_url: "/logo-arq.png"
         };
       }
 
@@ -142,7 +147,7 @@ export default function Home() {
         image_url: url, 
         status: 'aprobado', 
         category: currentUploadCategory,
-        user_metadata: uploaderMeta // <-- Guardamos la identidad aquí
+        user_metadata: uploaderMeta 
       }));
 
       await supabase.from('photos').insert(photosToInsert);
@@ -172,11 +177,9 @@ export default function Home() {
     const filteredPhotos = photos.filter(p => p.user_id === userId);
     setUserPhotos(filteredPhotos);
 
-    // NUEVO: Extraemos el nombre real guardado en la foto
     if (filteredPhotos.length > 0 && filteredPhotos[0].user_metadata) {
        setSelectedUserMeta(filteredPhotos[0].user_metadata);
     } else if (user?.id === userId) {
-       // Respaldo por si es una foto subida antes de esta actualización
        setSelectedUserMeta(user.user_metadata);
     } else {
        setSelectedUserMeta({ full_name: "Asistente del Congreso", avatar_url: "/logo-arq.png" });
@@ -306,13 +309,20 @@ export default function Home() {
         )}
       </header>
 
-      {/* MURO PRINCIPAL */}
+      {/* MURO PRINCIPAL OPTIMIZADO */}
       <section className="p-4 max-w-7xl mx-auto flex-1 w-full">
         <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
           {displayedPhotos.map((photo, index) => (
             <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-2xl overflow-hidden bg-gray-200 group cursor-pointer ${index % 3 === 0 ? 'h-80' : 'h-64'}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photo.image_url} alt="Evento" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+              {/* OPTIMIZACIÓN: loading="lazy", decoding="async" y getOptimizedUrl para la miniatura */}
+              <img 
+                 src={getOptimizedUrl(photo.image_url)} 
+                 loading="lazy" 
+                 decoding="async"
+                 alt="Evento" 
+                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+              />
             </div>
           ))}
         </div>
@@ -381,6 +391,7 @@ export default function Home() {
            </div>
            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
                {/* eslint-disable-next-line @next/next/no-img-element */}
+               {/* OPTIMIZACIÓN: Aquí SÍ cargamos la foto en calidad original porque es la vista detallada */}
                <img src={selectedPhoto.image_url} alt="Foto grande" className="max-w-full max-h-full object-contain rounded-md shadow-2xl" />
            </div>
         </div>
@@ -413,7 +424,13 @@ export default function Home() {
                 {userPhotos.map((photo, index) => (
                   <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-xl overflow-hidden bg-gray-200 cursor-pointer group ${index % 2 === 0 ? 'h-64' : 'h-48'}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photo.image_url} alt="Evento" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img 
+                      src={getOptimizedUrl(photo.image_url)} 
+                      loading="lazy" 
+                      decoding="async"
+                      alt="Evento" 
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                    />
                   </div>
                 ))}
              </div>
