@@ -7,6 +7,8 @@ import { User } from '@supabase/supabase-js';
 import { Toaster, toast } from 'sonner';
 import { toJpeg } from 'html-to-image';
 import { saveAs } from 'file-saver';
+// NUEVO: Importamos la librería de compresión
+import imageCompression from 'browser-image-compression'; 
 
 interface Photo {
   id: string;
@@ -18,7 +20,6 @@ interface Photo {
   user_metadata?: Record<string, unknown>; 
 }
 
-// AGREGA AQUÍ LOS CORREOS DE TODOS LOS ADMINISTRADORES
 const ADMIN_EMAILS = [
   "luislacsgamer@gmail.com",
   "jazmincs.castro@gmail.com",
@@ -26,7 +27,6 @@ const ADMIN_EMAILS = [
   "angyomg11@gmail.com"
 ]; 
 
-// FORMATO DE TEXTO EXACTO (YYYY-MM-DD)
 const CATEGORIES = [
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
@@ -36,10 +36,8 @@ const CATEGORIES = [
   { id: 'viernes', label: 'Viernes 09 - Fiesta', unlockDate: '2026-10-09' },
 ];
 
-// OPTIMIZADOR DE CLOUDINARY (Baja el peso de las miniaturas un 80%)
 const getOptimizedUrl = (url: string) => {
   if (!url || !url.includes('cloudinary.com')) return url;
-  // Inserta parámetros de compresión (calidad automática, formato auto, ancho max 600px)
   return url.replace('/image/upload/', '/image/upload/q_auto,f_auto,w_600/');
 };
 
@@ -81,7 +79,6 @@ export default function Home() {
     : (categoriesForUpload[0]?.id || '');
 
   const fetchPhotos = useCallback(async () => {
-    // OPTIMIZACIÓN: Limitamos a 300 fotos recientes para no colapsar la memoria RAM del celular
     const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }).limit(300); 
     if (data) setPhotos(data as Photo[]);
   }, []);
@@ -116,7 +113,7 @@ export default function Home() {
     if (!files || files.length === 0 || !user || !currentUploadCategory) return; 
 
     setIsUploading(true);
-    const toastId = toast.loading(`Subiendo ${files.length} foto(s)...`);
+    const toastId = toast.loading(`Comprimiendo y subiendo ${files.length} foto(s)...`); // Mensaje actualizado
     const uploadUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
 
     try {
@@ -133,11 +130,34 @@ export default function Home() {
       }
 
       const uploadPromises = Array.from(files).map(async (file) => {
+        
+        // -----------------------------------------------------
+        // NUEVO: SISTEMA DE COMPRESIÓN ANTES DE SUBIR
+        // -----------------------------------------------------
+        let fileToUpload = file;
+        try {
+          const options = {
+            maxSizeMB: 1.5, // Exprime la foto a máximo 1.5MB
+            maxWidthOrHeight: 1920, // Tamaño Full HD para que no pierda calidad visual
+            useWebWorker: true, // Usa procesador en segundo plano del celular
+            fileType: 'image/jpeg' // Esto cura mágicamente el problema de los iPhones (HEIC)
+          };
+          
+          fileToUpload = await imageCompression(file, options);
+        } catch (compError) {
+          console.error("Error al comprimir, usando original:", compError);
+          // Si por alguna extraña razón falla la compresión, intentará subir el original
+        }
+        // -----------------------------------------------------
+
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', fileToUpload); // Usamos el archivo ya "aplastado"
         formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+        
         const res = await fetch(uploadUrl, { method: 'POST', body: formData });
         const data = await res.json();
+        
+        if (data.error) throw new Error(data.error.message); // Si Cloudinary rechaza, abortamos
         return data.secure_url; 
       });
 
@@ -155,7 +175,7 @@ export default function Home() {
       fetchPhotos();
       setActiveCategory(currentUploadCategory);
     } catch (error) {
-      toast.error('Error al subir fotos.', { id: toastId });
+      toast.error('Hubo un error o archivo muy pesado. Intenta de nuevo.', { id: toastId });
     } finally {
       setIsUploading(false);
       event.target.value = ''; 
@@ -315,7 +335,6 @@ export default function Home() {
           {displayedPhotos.map((photo, index) => (
             <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-2xl overflow-hidden bg-gray-200 group cursor-pointer ${index % 3 === 0 ? 'h-80' : 'h-64'}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {/* OPTIMIZACIÓN: loading="lazy", decoding="async" y getOptimizedUrl para la miniatura */}
               <img 
                  src={getOptimizedUrl(photo.image_url)} 
                  loading="lazy" 
@@ -391,7 +410,6 @@ export default function Home() {
            </div>
            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
                {/* eslint-disable-next-line @next/next/no-img-element */}
-               {/* OPTIMIZACIÓN: Aquí SÍ cargamos la foto en calidad original porque es la vista detallada */}
                <img src={selectedPhoto.image_url} alt="Foto grande" className="max-w-full max-h-full object-contain rounded-md shadow-2xl" />
            </div>
         </div>
