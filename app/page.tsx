@@ -44,6 +44,9 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  // NUEVO: Estado para guardar el número total de fotos en la base de datos
+  const [totalPhotosCount, setTotalPhotosCount] = useState<number>(0); 
+  
   const [activeCategory, setActiveCategory] = useState('todos');
   const [uploadCategory, setUploadCategory] = useState(''); 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -57,7 +60,6 @@ export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   const collageRef = useRef<HTMLDivElement>(null); 
 
-  // NUEVO: Calculamos la fecha actual exacta para usarla en candados y selección por defecto
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -73,21 +75,22 @@ export default function Home() {
     ? CATEGORIES.filter(c => c.id !== 'todos') 
     : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); 
 
-  // NUEVO: Inteligencia para seleccionar la categoría por defecto
-  // 1. Busca si la fecha de hoy coincide con algún día del congreso
-  // 2. Si ya pasó el congreso, selecciona el último día desbloqueado
   const defaultUploadCategory = categoriesForUpload.find(c => c.unlockDate === todayStr)?.id 
     || categoriesForUpload[categoriesForUpload.length - 1]?.id 
     || '';
 
-  // Si el usuario eligió otra opción manualmente (uploadCategory), usamos esa, de lo contrario usamos la calculada para hoy
   const currentUploadCategory = categoriesForUpload.find(c => c.id === uploadCategory) 
     ? uploadCategory 
     : defaultUploadCategory;
 
   const fetchPhotos = useCallback(async () => {
+    // 1. Descargamos las últimas 300 fotos para mostrarlas rápido
     const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }).limit(300); 
     if (data) setPhotos(data as Photo[]);
+
+    // 2. NUEVO: Le pedimos a Supabase el total exacto (sin descargar las fotos, súper rápido)
+    const { count } = await supabase.from('photos').select('*', { count: 'exact', head: true });
+    if (count !== null) setTotalPhotosCount(count);
   }, []);
 
   useEffect(() => {
@@ -166,7 +169,7 @@ export default function Home() {
         user_id: user.id, 
         image_url: url, 
         status: 'aprobado', 
-        category: currentUploadCategory, // Guardará en la seleccionada o en la detectada automáticamente
+        category: currentUploadCategory, 
         user_metadata: uploaderMeta 
       }));
 
@@ -188,6 +191,8 @@ export default function Home() {
     if (!error) {
        setPhotos(photos.filter(p => p.id !== id));
        setUserPhotos(userPhotos.filter(p => p.id !== id)); 
+       // Opcional: restarle uno al contador para que sea inmediato
+       setTotalPhotosCount(prev => prev - 1);
     }
   };
 
@@ -283,7 +288,16 @@ export default function Home() {
                   </span>
                   <span className="text-[10px] font-black tracking-widest uppercase">En Vivo</span>
                </div>
-               <div className="hidden sm:block border-l-2 border-gray-300 pl-3">
+
+               {/* NUEVO: CONTADOR DE FOTOS (Se muestra si hay más de 0 fotos) */}
+               {totalPhotosCount > 0 && (
+                 <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100">
+                    <ImageIcon size={12} />
+                    <span className="text-[10px] font-black tracking-widest uppercase">{totalPhotosCount} Fotos</span>
+                 </div>
+               )}
+
+               <div className="hidden md:block border-l-2 border-gray-300 pl-3">
                  {/* eslint-disable-next-line @next/next/no-img-element */}
                  <img src="/logo-dia.png" alt="Día del Arquitecto" className="h-8 object-contain" />
                </div>
