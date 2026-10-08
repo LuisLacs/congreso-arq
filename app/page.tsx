@@ -7,7 +7,6 @@ import { User } from '@supabase/supabase-js';
 import { Toaster, toast } from 'sonner';
 import { toJpeg } from 'html-to-image';
 import { saveAs } from 'file-saver';
-// NUEVO: Importamos la librería de compresión
 import imageCompression from 'browser-image-compression'; 
 
 interface Photo {
@@ -58,15 +57,15 @@ export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   const collageRef = useRef<HTMLDivElement>(null); 
 
+  // NUEVO: Calculamos la fecha actual exacta para usarla en candados y selección por defecto
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`; 
+
   const isCategoryUnlocked = (dateString: string) => {
     if (isAdminView) return true; 
-    
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    
-    const todayStr = `${year}-${month}-${day}`; 
     return todayStr >= dateString;
   };
 
@@ -74,9 +73,17 @@ export default function Home() {
     ? CATEGORIES.filter(c => c.id !== 'todos') 
     : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); 
 
+  // NUEVO: Inteligencia para seleccionar la categoría por defecto
+  // 1. Busca si la fecha de hoy coincide con algún día del congreso
+  // 2. Si ya pasó el congreso, selecciona el último día desbloqueado
+  const defaultUploadCategory = categoriesForUpload.find(c => c.unlockDate === todayStr)?.id 
+    || categoriesForUpload[categoriesForUpload.length - 1]?.id 
+    || '';
+
+  // Si el usuario eligió otra opción manualmente (uploadCategory), usamos esa, de lo contrario usamos la calculada para hoy
   const currentUploadCategory = categoriesForUpload.find(c => c.id === uploadCategory) 
     ? uploadCategory 
-    : (categoriesForUpload[0]?.id || '');
+    : defaultUploadCategory;
 
   const fetchPhotos = useCallback(async () => {
     const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }).limit(300); 
@@ -113,7 +120,7 @@ export default function Home() {
     if (!files || files.length === 0 || !user || !currentUploadCategory) return; 
 
     setIsUploading(true);
-    const toastId = toast.loading(`Comprimiendo y subiendo ${files.length} foto(s)...`); // Mensaje actualizado
+    const toastId = toast.loading(`Comprimiendo y subiendo ${files.length} foto(s)...`);
     const uploadUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
 
     try {
@@ -130,34 +137,27 @@ export default function Home() {
       }
 
       const uploadPromises = Array.from(files).map(async (file) => {
-        
-        // -----------------------------------------------------
-        // NUEVO: SISTEMA DE COMPRESIÓN ANTES DE SUBIR
-        // -----------------------------------------------------
         let fileToUpload = file;
         try {
           const options = {
-            maxSizeMB: 1.5, // Exprime la foto a máximo 1.5MB
-            maxWidthOrHeight: 1920, // Tamaño Full HD para que no pierda calidad visual
-            useWebWorker: true, // Usa procesador en segundo plano del celular
-            fileType: 'image/jpeg' // Esto cura mágicamente el problema de los iPhones (HEIC)
+            maxSizeMB: 1.5, 
+            maxWidthOrHeight: 1920, 
+            useWebWorker: true, 
+            fileType: 'image/jpeg' 
           };
-          
           fileToUpload = await imageCompression(file, options);
         } catch (compError) {
           console.error("Error al comprimir, usando original:", compError);
-          // Si por alguna extraña razón falla la compresión, intentará subir el original
         }
-        // -----------------------------------------------------
 
         const formData = new FormData();
-        formData.append('file', fileToUpload); // Usamos el archivo ya "aplastado"
+        formData.append('file', fileToUpload); 
         formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
         
         const res = await fetch(uploadUrl, { method: 'POST', body: formData });
         const data = await res.json();
         
-        if (data.error) throw new Error(data.error.message); // Si Cloudinary rechaza, abortamos
+        if (data.error) throw new Error(data.error.message); 
         return data.secure_url; 
       });
 
@@ -166,7 +166,7 @@ export default function Home() {
         user_id: user.id, 
         image_url: url, 
         status: 'aprobado', 
-        category: currentUploadCategory,
+        category: currentUploadCategory, // Guardará en la seleccionada o en la detectada automáticamente
         user_metadata: uploaderMeta 
       }));
 
