@@ -1,7 +1,7 @@
 'use client'; 
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Loader2, Image as ImageIcon, X, Wand2, Download, Trash2, ShieldAlert, Lock, Heart } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Plus, Loader2, Image as ImageIcon, X, Wand2, Download, Trash2, ShieldAlert, Lock, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../lib/supabase'; 
 import { User } from '@supabase/supabase-js';
 import { Toaster, toast } from 'sonner';
@@ -61,6 +61,10 @@ export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   const collageRef = useRef<HTMLDivElement>(null); 
 
+  // Variables para detectar gestos en móviles (Swipe)
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -92,11 +96,25 @@ export default function Home() {
     if (count !== null) setTotalPhotosCount(count);
   }, []);
 
+  // LÓGICA DE FILTRADO MOVIDA HACIA ARRIBA PARA QUE LA NAVEGACIÓN LA ENCUENTRE
+  const displayedPhotos = useMemo(() => {
+    if (activeCategory === 'top') {
+      return [...photos]
+        .filter(p => p.likes && p.likes.length > 0)
+        .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
+        .slice(0, 15);
+    } else if (activeCategory !== 'todos') {
+      return photos.filter(p => p.category === activeCategory);
+    }
+    return photos;
+  }, [photos, activeCategory]);
+
+  // CORRECCIÓN: Quitamos isAdminView del bloqueo de scroll
   useEffect(() => {
-    if (selectedUserId || isCollageOpen || isAdminView || selectedPhoto) document.body.style.overflow = 'hidden';
+    if (selectedUserId || isCollageOpen || selectedPhoto) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'auto';
     return () => { document.body.style.overflow = 'auto'; };
-  }, [selectedUserId, isCollageOpen, isAdminView, selectedPhoto]);
+  }, [selectedUserId, isCollageOpen, selectedPhoto]);
 
   useEffect(() => {
     const initApp = async () => {
@@ -121,7 +139,6 @@ export default function Home() {
         fetchPhotos();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'photos' }, () => {
-        // Refresca las fotos automáticamente si un admin cambia de categoría en otra PC
         fetchPhotos();
       })
       .subscribe();
@@ -131,6 +148,62 @@ export default function Home() {
       supabase.removeChannel(realtimeChannel); 
     };
   }, [fetchPhotos]);
+
+  // NUEVO: Función para navegar entre fotos
+  const navigatePhoto = useCallback((direction: 'next' | 'prev') => {
+    if (!selectedPhoto) return;
+    const currentList = selectedUserId ? userPhotos : displayedPhotos;
+    const currentIndex = currentList.findIndex(p => p.id === selectedPhoto.id);
+    if (currentIndex === -1) return;
+
+    let newIndex = currentIndex;
+    if (direction === 'next') {
+      newIndex = currentIndex < currentList.length - 1 ? currentIndex + 1 : 0;
+    } else {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : currentList.length - 1;
+    }
+    setSelectedPhoto(currentList[newIndex]);
+  }, [selectedPhoto, selectedUserId, userPhotos, displayedPhotos]);
+
+  // NUEVO: Escuchar teclas para navegar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedPhoto) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigatePhoto('next');
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') navigatePhoto('prev');
+      if (e.key === 'Escape') setSelectedPhoto(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigatePhoto, selectedPhoto]);
+
+  // NUEVO: Control de gestos (Swipe) en móviles
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+    setTouchStartY(e.touches[0].clientY);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null || touchStartY === null) return;
+    
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const deltaX = touchStartX - touchEndX;
+    const deltaY = touchStartY - touchEndY;
+
+    // Detectamos si el movimiento fue más vertical u horizontal (Umbral de 50px)
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
+      if (deltaY > 0) navigatePhoto('next'); // Deslizó hacia arriba
+      else navigatePhoto('prev'); // Deslizó hacia abajo
+    } else if (Math.abs(deltaX) > 50) {
+      if (deltaX > 0) navigatePhoto('next'); // Deslizó hacia la izquierda
+      else navigatePhoto('prev'); // Deslizó hacia la derecha
+    }
+    
+    setTouchStartX(null);
+    setTouchStartY(null);
+  };
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
@@ -184,9 +257,7 @@ export default function Home() {
         try {
           const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true, fileType: 'image/jpeg' };
           fileToUpload = await imageCompression(file, options);
-        } catch { 
-          // Si falla, usa el archivo original
-        }
+        } catch { }
 
         const formData = new FormData();
         formData.append('file', fileToUpload); 
@@ -228,14 +299,12 @@ export default function Home() {
     }
   };
 
-  // NUEVO: Función para cambiar la categoría de una foto
   const handleChangeCategory = async (photoId: string, newCategory: string) => {
     const toastId = toast.loading('Moviendo foto...');
     try {
       const { error } = await supabase.from('photos').update({ category: newCategory }).eq('id', photoId);
       if (error) throw error;
       
-      // Actualizamos visualmente sin recargar
       setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, category: newCategory } : p));
       if (selectedPhoto?.id === photoId) {
          setSelectedPhoto(prev => prev ? { ...prev, category: newCategory } : null);
@@ -319,16 +388,6 @@ export default function Home() {
       setIsDownloading(false); 
     }
   };
-
-  let displayedPhotos = photos;
-  if (activeCategory === 'top') {
-    displayedPhotos = [...photos]
-      .filter(p => p.likes && p.likes.length > 0)
-      .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
-      .slice(0, 15);
-  } else if (activeCategory !== 'todos') {
-    displayedPhotos = photos.filter(p => p.category === activeCategory);
-  }
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900 pb-40 font-sans flex flex-col">
@@ -464,12 +523,15 @@ export default function Home() {
 
       {/* 1. MODAL FOTO EN PANTALLA COMPLETA */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm">
+        <div 
+           className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm"
+           onTouchStart={handleTouchStart}
+           onTouchEnd={handleTouchEnd}
+        >
            <div className="flex justify-between items-center p-4">
               
-              {/* NUEVO: Controles Admin (Mover de Categoría) o Botón de Galería normal */}
               {isAdminView ? (
-                 <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full">
+                 <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full z-10">
                     <span className="text-white text-xs font-bold opacity-80">Día:</span>
                     <select 
                        value={selectedPhoto.category || ''}
@@ -483,7 +545,7 @@ export default function Home() {
                  </div>
               ) : (
                  <div 
-                    className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 px-3 py-2 rounded-full transition-colors"
+                    className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 px-3 py-2 rounded-full transition-colors z-10"
                     onClick={() => { openUserGallery(selectedPhoto.user_id); setSelectedPhoto(null); }}
                  >
                     <ImageIcon size={16} className="text-white" />
@@ -491,7 +553,7 @@ export default function Home() {
                  </div>
               )}
               
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 z-10">
                  <button onClick={(e) => toggleLike(e, selectedPhoto.id)} className="px-3 py-2 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors flex items-center gap-2">
                     <Heart size={20} className={selectedPhoto.likes?.some(l => l.user_id === user?.id) ? "fill-red-500 text-red-500" : ""} />
                     <span className="text-sm font-bold">{selectedPhoto.likes?.length || 0}</span>
@@ -510,9 +572,26 @@ export default function Home() {
                  </button>
               </div>
            </div>
-           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+
+           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
+               {/* BOTÓN NAVEGACIÓN IZQUIERDA (Escritorio) */}
+               <button 
+                  onClick={(e) => { e.stopPropagation(); navigatePhoto('prev'); }} 
+                  className="absolute left-4 p-3 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors hidden md:block z-10"
+               >
+                  <ChevronLeft size={32} />
+               </button>
+
                {/* eslint-disable-next-line @next/next/no-img-element */}
-               <img src={selectedPhoto.image_url} alt="Foto grande" className="max-w-full max-h-full object-contain rounded-md shadow-2xl" />
+               <img src={selectedPhoto.image_url} alt="Foto grande" className="max-w-full max-h-full object-contain rounded-md shadow-2xl pointer-events-none select-none" />
+
+               {/* BOTÓN NAVEGACIÓN DERECHA (Escritorio) */}
+               <button 
+                  onClick={(e) => { e.stopPropagation(); navigatePhoto('next'); }} 
+                  className="absolute right-4 p-3 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors hidden md:block z-10"
+               >
+                  <ChevronRight size={32} />
+               </button>
            </div>
         </div>
       )}
