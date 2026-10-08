@@ -28,7 +28,7 @@ const ADMIN_EMAILS = [
 ]; 
 
 const CATEGORIES = [
-  { id: 'top', label: '🏆 Top Ranking', unlockDate: '2026-10-05' },
+  { id: 'top', label: 'Top Ranking', unlockDate: '2026-10-05' },
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
   { id: 'martes', label: 'Martes 06 - Talleres', unlockDate: '2026-10-06' },
@@ -113,12 +113,15 @@ export default function Home() {
 
     const realtimeChannel = supabase.channel('congreso-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'photos' }, (payload) => {
-        // SOLUCIÓN AL ERROR DE TYPESCRIPT: Casteamos el payload a 'any' primero
         const newPhoto = { ...(payload.new as Photo), likes: [] };
         setPhotos(prev => [newPhoto, ...prev]);
         setTotalPhotosCount(prev => prev + 1);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
+        fetchPhotos();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'photos' }, () => {
+        // Refresca las fotos automáticamente si un admin cambia de categoría en otra PC
         fetchPhotos();
       })
       .subscribe();
@@ -135,7 +138,7 @@ export default function Home() {
 
   const toggleLike = async (e: React.MouseEvent, photoId: string) => {
     e.stopPropagation(); 
-    if (!user) return toast.error("Entra con tu cuenta para dar me gusta 🔥");
+    if (!user) return toast.error("Entra con tu cuenta para dar me gusta ❤️");
 
     const photo = photos.find(p => p.id === photoId);
     if (!photo) return;
@@ -222,6 +225,25 @@ export default function Home() {
        setPhotos(photos.filter(p => p.id !== id));
        setUserPhotos(userPhotos.filter(p => p.id !== id)); 
        setTotalPhotosCount(prev => prev - 1);
+    }
+  };
+
+  // NUEVO: Función para cambiar la categoría de una foto
+  const handleChangeCategory = async (photoId: string, newCategory: string) => {
+    const toastId = toast.loading('Moviendo foto...');
+    try {
+      const { error } = await supabase.from('photos').update({ category: newCategory }).eq('id', photoId);
+      if (error) throw error;
+      
+      // Actualizamos visualmente sin recargar
+      setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, category: newCategory } : p));
+      if (selectedPhoto?.id === photoId) {
+         setSelectedPhoto(prev => prev ? { ...prev, category: newCategory } : null);
+      }
+      
+      toast.success('Foto movida correctamente', { id: toastId });
+    } catch (err) {
+      toast.error('Error al mover la foto', { id: toastId });
     }
   };
 
@@ -444,7 +466,22 @@ export default function Home() {
       {selectedPhoto && (
         <div className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm">
            <div className="flex justify-between items-center p-4">
-              {!isAdminView ? (
+              
+              {/* NUEVO: Controles Admin (Mover de Categoría) o Botón de Galería normal */}
+              {isAdminView ? (
+                 <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full">
+                    <span className="text-white text-xs font-bold opacity-80">Día:</span>
+                    <select 
+                       value={selectedPhoto.category || ''}
+                       onChange={(e) => handleChangeCategory(selectedPhoto.id, e.target.value)}
+                       className="bg-transparent text-white text-xs font-bold outline-none cursor-pointer"
+                    >
+                       {CATEGORIES.filter(c => c.id !== 'top' && c.id !== 'todos').map(c => (
+                         <option key={c.id} value={c.id} className="text-black">{c.label}</option>
+                       ))}
+                    </select>
+                 </div>
+              ) : (
                  <div 
                     className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 px-3 py-2 rounded-full transition-colors"
                     onClick={() => { openUserGallery(selectedPhoto.user_id); setSelectedPhoto(null); }}
@@ -452,7 +489,7 @@ export default function Home() {
                     <ImageIcon size={16} className="text-white" />
                     <span className="text-white text-xs font-bold tracking-wide">Galería del autor</span>
                  </div>
-              ) : (<div></div>)}
+              )}
               
               <div className="flex items-center gap-3">
                  <button onClick={(e) => toggleLike(e, selectedPhoto.id)} className="px-3 py-2 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors flex items-center gap-2">
