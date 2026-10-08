@@ -88,7 +88,8 @@ export default function Home() {
     : defaultUploadCategory;
 
   const fetchPhotos = useCallback(async () => {
-    const { data } = await supabase.from('photos').select('*, likes(user_id)').order('created_at', { ascending: false }).limit(300); 
+    // AHORA SÍ: Límite expandido a 2000 para que traiga toda la historia del congreso
+    const { data } = await supabase.from('photos').select('*, likes(user_id)').order('created_at', { ascending: false }).limit(2000); 
     if (data) setPhotos(data as Photo[]);
 
     const { count } = await supabase.from('photos').select('*', { count: 'exact', head: true });
@@ -209,7 +210,7 @@ export default function Home() {
 
   const toggleLike = async (e: React.MouseEvent, photoId: string) => {
     e.stopPropagation(); 
-    if (!user) return toast.error("Entra con tu cuenta para dar me gusta ❤️");
+    if (!user) return toast.error("Entra con tu cuenta para dar me gusta 🔥");
 
     const photo = photos.find(p => p.id === photoId);
     if (!photo) return;
@@ -291,7 +292,7 @@ export default function Home() {
     if(!confirm('¿Borrar esta foto de la galería pública?')) return;
     const { error } = await supabase.from('photos').delete().eq('id', id);
     if (!error) {
-       // La eliminación local la maneja Realtime
+       // Eliminado local mediante Realtime
     }
   };
 
@@ -346,7 +347,6 @@ export default function Home() {
       const blob = await response.blob();
       const file = new File([blob], `congreso-foto-${Date.now()}.jpg`, { type: 'image/jpeg' });
       
-      // NUEVO: Verificamos si estamos en celular para compartir. Si es PC, descargamos directo.
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
       if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -372,7 +372,6 @@ export default function Home() {
         const blob = await response.blob();
         const file = new File([blob], `congreso-arq-collage-${Date.now()}.jpg`, { type: 'image/jpeg' });
         
-        // NUEVO: Verificamos si estamos en celular para compartir. Si es PC, descargamos directo.
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
         if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
