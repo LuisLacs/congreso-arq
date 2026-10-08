@@ -28,7 +28,7 @@ const ADMIN_EMAILS = [
 ]; 
 
 const CATEGORIES = [
-  { id: 'top', label: 'Top Ranking', unlockDate: '2026-10-05' },
+  { id: 'top', label: '🏆 Top Ranking', unlockDate: '2026-10-05' },
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
   { id: 'martes', label: 'Martes 06 - Talleres', unlockDate: '2026-10-06' },
@@ -61,7 +61,6 @@ export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   const collageRef = useRef<HTMLDivElement>(null); 
 
-  // Variables para detectar gestos en móviles (Swipe)
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
@@ -96,7 +95,6 @@ export default function Home() {
     if (count !== null) setTotalPhotosCount(count);
   }, []);
 
-  // LÓGICA DE FILTRADO MOVIDA HACIA ARRIBA PARA QUE LA NAVEGACIÓN LA ENCUENTRE
   const displayedPhotos = useMemo(() => {
     if (activeCategory === 'top') {
       return [...photos]
@@ -109,7 +107,6 @@ export default function Home() {
     return photos;
   }, [photos, activeCategory]);
 
-  // CORRECCIÓN: Quitamos isAdminView del bloqueo de scroll
   useEffect(() => {
     if (selectedUserId || isCollageOpen || selectedPhoto) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'auto';
@@ -129,16 +126,27 @@ export default function Home() {
         setUser(session?.user ?? null);
     });
 
+    // =================================================================
+    // MOTOR DE TIEMPO REAL ULTRA OPTIMIZADO
+    // =================================================================
     const realtimeChannel = supabase.channel('congreso-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'photos' }, (payload) => {
         const newPhoto = { ...(payload.new as Photo), likes: [] };
         setPhotos(prev => [newPhoto, ...prev]);
         setTotalPhotosCount(prev => prev + 1);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
-        fetchPhotos();
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'photos' }, (payload) => {
+        // Cuando un Admin cambia la categoría, se actualiza al instante en todos los celulares
+        const updatedPhoto = payload.new as Photo;
+        setPhotos(prev => prev.map(p => p.id === updatedPhoto.id ? { ...p, category: updatedPhoto.category } : p));
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'photos' }, () => {
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'photos' }, (payload) => {
+        // Cuando un Admin borra una foto, desaparece sola de las pantallas
+        setPhotos(prev => prev.filter(p => p.id !== payload.old.id));
+        setTotalPhotosCount(prev => prev - 1);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
+        // Los likes cambian tan rápido que es mejor refescar (podría optimizarse también luego)
         fetchPhotos();
       })
       .subscribe();
@@ -149,7 +157,6 @@ export default function Home() {
     };
   }, [fetchPhotos]);
 
-  // NUEVO: Función para navegar entre fotos
   const navigatePhoto = useCallback((direction: 'next' | 'prev') => {
     if (!selectedPhoto) return;
     const currentList = selectedUserId ? userPhotos : displayedPhotos;
@@ -165,7 +172,6 @@ export default function Home() {
     setSelectedPhoto(currentList[newIndex]);
   }, [selectedPhoto, selectedUserId, userPhotos, displayedPhotos]);
 
-  // NUEVO: Escuchar teclas para navegar
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!selectedPhoto) return;
@@ -177,7 +183,6 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigatePhoto, selectedPhoto]);
 
-  // NUEVO: Control de gestos (Swipe) en móviles
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
     setTouchStartY(e.touches[0].clientY);
@@ -192,13 +197,12 @@ export default function Home() {
     const deltaX = touchStartX - touchEndX;
     const deltaY = touchStartY - touchEndY;
 
-    // Detectamos si el movimiento fue más vertical u horizontal (Umbral de 50px)
     if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
-      if (deltaY > 0) navigatePhoto('next'); // Deslizó hacia arriba
-      else navigatePhoto('prev'); // Deslizó hacia abajo
+      if (deltaY > 0) navigatePhoto('next'); 
+      else navigatePhoto('prev'); 
     } else if (Math.abs(deltaX) > 50) {
-      if (deltaX > 0) navigatePhoto('next'); // Deslizó hacia la izquierda
-      else navigatePhoto('prev'); // Deslizó hacia la derecha
+      if (deltaX > 0) navigatePhoto('next'); 
+      else navigatePhoto('prev'); 
     }
     
     setTouchStartX(null);
@@ -211,7 +215,7 @@ export default function Home() {
 
   const toggleLike = async (e: React.MouseEvent, photoId: string) => {
     e.stopPropagation(); 
-    if (!user) return toast.error("Entra con tu cuenta para dar me gusta ❤️");
+    if (!user) return toast.error("Entra con tu cuenta para dar me gusta 🔥");
 
     const photo = photos.find(p => p.id === photoId);
     if (!photo) return;
@@ -293,9 +297,7 @@ export default function Home() {
     if(!confirm('¿Borrar esta foto de la galería pública?')) return;
     const { error } = await supabase.from('photos').delete().eq('id', id);
     if (!error) {
-       setPhotos(photos.filter(p => p.id !== id));
-       setUserPhotos(userPhotos.filter(p => p.id !== id)); 
-       setTotalPhotosCount(prev => prev - 1);
+       // La actualización visual ya la hace el 'DELETE' del Realtime automáticamente
     }
   };
 
@@ -305,6 +307,7 @@ export default function Home() {
       const { error } = await supabase.from('photos').update({ category: newCategory }).eq('id', photoId);
       if (error) throw error;
       
+      // La actualización en los demás celulares la hace el 'UPDATE' del Realtime
       setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, category: newCategory } : p));
       if (selectedPhoto?.id === photoId) {
          setSelectedPhoto(prev => prev ? { ...prev, category: newCategory } : null);
@@ -574,7 +577,6 @@ export default function Home() {
            </div>
 
            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
-               {/* BOTÓN NAVEGACIÓN IZQUIERDA (Escritorio) */}
                <button 
                   onClick={(e) => { e.stopPropagation(); navigatePhoto('prev'); }} 
                   className="absolute left-4 p-3 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors hidden md:block z-10"
@@ -585,7 +587,6 @@ export default function Home() {
                {/* eslint-disable-next-line @next/next/no-img-element */}
                <img src={selectedPhoto.image_url} alt="Foto grande" className="max-w-full max-h-full object-contain rounded-md shadow-2xl pointer-events-none select-none" />
 
-               {/* BOTÓN NAVEGACIÓN DERECHA (Escritorio) */}
                <button 
                   onClick={(e) => { e.stopPropagation(); navigatePhoto('next'); }} 
                   className="absolute right-4 p-3 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors hidden md:block z-10"
