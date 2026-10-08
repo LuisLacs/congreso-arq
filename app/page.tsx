@@ -1,7 +1,7 @@
 'use client'; 
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Loader2, Image as ImageIcon, X, Wand2, Download, Trash2, ShieldAlert, Lock, Info } from 'lucide-react';
+import { Plus, Loader2, Image as ImageIcon, X, Wand2, Download, Trash2, ShieldAlert, Lock, Heart } from 'lucide-react';
 import { supabase } from '../lib/supabase'; 
 import { User } from '@supabase/supabase-js';
 import { Toaster, toast } from 'sonner';
@@ -17,6 +17,7 @@ interface Photo {
   category?: string;
   created_at: string;
   user_metadata?: Record<string, unknown>; 
+  likes?: { user_id: string }[];
 }
 
 const ADMIN_EMAILS = [
@@ -27,6 +28,7 @@ const ADMIN_EMAILS = [
 ]; 
 
 const CATEGORIES = [
+  { id: 'top', label: '🏆 Top Ranking', unlockDate: '2026-10-05' },
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
   { id: 'martes', label: 'Martes 06 - Talleres', unlockDate: '2026-10-06' },
@@ -44,7 +46,6 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  // NUEVO: Estado para guardar el número total de fotos en la base de datos
   const [totalPhotosCount, setTotalPhotosCount] = useState<number>(0); 
   
   const [activeCategory, setActiveCategory] = useState('todos');
@@ -67,13 +68,13 @@ export default function Home() {
   const todayStr = `${year}-${month}-${day}`; 
 
   const isCategoryUnlocked = (dateString: string) => {
-    if (isAdminView) return true; 
+    if (isAdminView || dateString === '2026-10-05') return true; 
     return todayStr >= dateString;
   };
 
   const categoriesForUpload = isAdminView 
-    ? CATEGORIES.filter(c => c.id !== 'todos') 
-    : CATEGORIES.filter(c => c.id !== 'todos' && isCategoryUnlocked(c.unlockDate)); 
+    ? CATEGORIES.filter(c => c.id !== 'todos' && c.id !== 'top') 
+    : CATEGORIES.filter(c => c.id !== 'todos' && c.id !== 'top' && isCategoryUnlocked(c.unlockDate)); 
 
   const defaultUploadCategory = categoriesForUpload.find(c => c.unlockDate === todayStr)?.id 
     || categoriesForUpload[categoriesForUpload.length - 1]?.id 
@@ -84,11 +85,9 @@ export default function Home() {
     : defaultUploadCategory;
 
   const fetchPhotos = useCallback(async () => {
-    // 1. Descargamos las últimas 300 fotos para mostrarlas rápido
-    const { data } = await supabase.from('photos').select('*').order('created_at', { ascending: false }).limit(300); 
+    const { data } = await supabase.from('photos').select('*, likes(user_id)').order('created_at', { ascending: false }).limit(300); 
     if (data) setPhotos(data as Photo[]);
 
-    // 2. NUEVO: Le pedimos a Supabase el total exacto (sin descargar las fotos, súper rápido)
     const { count } = await supabase.from('photos').select('*', { count: 'exact', head: true });
     if (count !== null) setTotalPhotosCount(count);
   }, []);
@@ -111,11 +110,49 @@ export default function Home() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
     });
-    return () => subscription.unsubscribe();
+
+    const realtimeChannel = supabase.channel('congreso-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'photos' }, (payload) => {
+        // SOLUCIÓN AL ERROR DE TYPESCRIPT: Casteamos el payload a 'any' primero
+        const newPhoto = { ...(payload.new as Photo), likes: [] };
+        setPhotos(prev => [newPhoto, ...prev]);
+        setTotalPhotosCount(prev => prev + 1);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
+        fetchPhotos();
+      })
+      .subscribe();
+
+    return () => { 
+      subscription.unsubscribe();
+      supabase.removeChannel(realtimeChannel); 
+    };
   }, [fetchPhotos]);
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+  };
+
+  const toggleLike = async (e: React.MouseEvent, photoId: string) => {
+    e.stopPropagation(); 
+    if (!user) return toast.error("Entra con tu cuenta para dar me gusta 🔥");
+
+    const photo = photos.find(p => p.id === photoId);
+    if (!photo) return;
+    const hasLiked = photo.likes?.some(l => l.user_id === user.id);
+
+    const newLikes = hasLiked
+      ? (photo.likes || []).filter(l => l.user_id !== user.id)
+      : [...(photo.likes || []), { user_id: user.id }];
+
+    setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, likes: newLikes } : p));
+    if (selectedPhoto?.id === photoId) setSelectedPhoto(prev => prev ? { ...prev, likes: newLikes } : null);
+
+    if (hasLiked) {
+      await supabase.from('likes').delete().match({ photo_id: photoId, user_id: user.id });
+    } else {
+      await supabase.from('likes').insert({ photo_id: photoId, user_id: user.id });
+    }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -142,15 +179,10 @@ export default function Home() {
       const uploadPromises = Array.from(files).map(async (file) => {
         let fileToUpload = file;
         try {
-          const options = {
-            maxSizeMB: 1.5, 
-            maxWidthOrHeight: 1920, 
-            useWebWorker: true, 
-            fileType: 'image/jpeg' 
-          };
+          const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true, fileType: 'image/jpeg' };
           fileToUpload = await imageCompression(file, options);
-        } catch (compError) {
-          console.error("Error al comprimir, usando original:", compError);
+        } catch { 
+          // Si falla, usa el archivo original
         }
 
         const formData = new FormData();
@@ -175,10 +207,8 @@ export default function Home() {
 
       await supabase.from('photos').insert(photosToInsert);
       toast.success('¡Fotos subidas con éxito!', { id: toastId });
-      fetchPhotos();
-      setActiveCategory(currentUploadCategory);
-    } catch (error) {
-      toast.error('Hubo un error o archivo muy pesado. Intenta de nuevo.', { id: toastId });
+    } catch {
+      toast.error('Hubo un error o archivo muy pesado.', { id: toastId });
     } finally {
       setIsUploading(false);
       event.target.value = ''; 
@@ -191,7 +221,6 @@ export default function Home() {
     if (!error) {
        setPhotos(photos.filter(p => p.id !== id));
        setUserPhotos(userPhotos.filter(p => p.id !== id)); 
-       // Opcional: restarle uno al contador para que sea inmediato
        setTotalPhotosCount(prev => prev - 1);
     }
   };
@@ -236,7 +265,7 @@ export default function Home() {
         saveAs(blob, `congreso-foto-${Date.now()}.jpg`);
         toast.success('¡Descargada!', { id: toastId });
       }
-    } catch (e) {
+    } catch {
       saveAs(url, `congreso-foto-${Date.now()}.jpg`);
       toast.success('¡Descargada!', { id: toastId });
     }
@@ -258,18 +287,26 @@ export default function Home() {
           saveAs(dataUrl, `congreso-arq-${Date.now()}.jpg`);
           toast.success('¡Guardado en tu dispositivo!');
         }
-      } catch (shareError) {
+      } catch {
         saveAs(dataUrl, `congreso-arq-${Date.now()}.jpg`);
         toast.success('¡Guardado en tu dispositivo!');
       }
-    } catch (err) {
+    } catch {
       toast.error('Error al generar la imagen.');
     } finally { 
       setIsDownloading(false); 
     }
   };
 
-  const displayedPhotos = activeCategory === 'todos' ? photos : photos.filter(p => p.category === activeCategory);
+  let displayedPhotos = photos;
+  if (activeCategory === 'top') {
+    displayedPhotos = [...photos]
+      .filter(p => p.likes && p.likes.length > 0)
+      .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
+      .slice(0, 15);
+  } else if (activeCategory !== 'todos') {
+    displayedPhotos = photos.filter(p => p.category === activeCategory);
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900 pb-40 font-sans flex flex-col">
@@ -288,15 +325,12 @@ export default function Home() {
                   </span>
                   <span className="text-[10px] font-black tracking-widest uppercase">En Vivo</span>
                </div>
-
-               {/* NUEVO: CONTADOR DE FOTOS (Se muestra si hay más de 0 fotos) */}
                {totalPhotosCount > 0 && (
                  <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100">
                     <ImageIcon size={12} />
                     <span className="text-[10px] font-black tracking-widest uppercase">{totalPhotosCount} Fotos</span>
                  </div>
                )}
-
                <div className="hidden md:block border-l-2 border-gray-300 pl-3">
                  {/* eslint-disable-next-line @next/next/no-img-element */}
                  <img src="/logo-dia.png" alt="Día del Arquitecto" className="h-8 object-contain" />
@@ -332,7 +366,7 @@ export default function Home() {
                             key={c.id}
                             onClick={() => unlocked && setActiveCategory(c.id)}
                             className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1
-                            ${activeCategory === c.id ? 'bg-gray-900 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600'}
+                            ${activeCategory === c.id ? (c.id === 'top' ? 'bg-[#bda15f] text-white shadow-md' : 'bg-gray-900 text-white shadow-md') : 'bg-white border border-gray-200 text-gray-600'}
                             ${!unlocked ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-gray-200'}`}
                         >
                             {c.label} {!unlocked && <Lock size={12} />}
@@ -345,9 +379,21 @@ export default function Home() {
 
       {/* MURO PRINCIPAL OPTIMIZADO */}
       <section className="p-4 max-w-7xl mx-auto flex-1 w-full">
+        {activeCategory === 'top' && displayedPhotos.length === 0 && (
+           <div className="text-center text-gray-400 py-10 font-bold">Aún no hay fotos con likes. ¡Sé el primero en reaccionar! 🔥</div>
+        )}
         <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
           {displayedPhotos.map((photo, index) => (
             <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-2xl overflow-hidden bg-gray-200 group cursor-pointer ${index % 3 === 0 ? 'h-80' : 'h-64'}`}>
+              
+              <div 
+                 onClick={(e) => toggleLike(e, photo.id)}
+                 className="absolute bottom-3 right-3 bg-black/30 hover:bg-black/60 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-1.5 z-10 transition-colors"
+              >
+                 <Heart size={16} className={photo.likes?.some(l => l.user_id === user?.id) ? "fill-red-500 text-red-500" : "text-white"} />
+                 <span className="text-white text-xs font-bold">{photo.likes?.length || 0}</span>
+              </div>
+
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
                  src={getOptimizedUrl(photo.image_url)} 
@@ -409,6 +455,11 @@ export default function Home() {
               ) : (<div></div>)}
               
               <div className="flex items-center gap-3">
+                 <button onClick={(e) => toggleLike(e, selectedPhoto.id)} className="px-3 py-2 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors flex items-center gap-2">
+                    <Heart size={20} className={selectedPhoto.likes?.some(l => l.user_id === user?.id) ? "fill-red-500 text-red-500" : ""} />
+                    <span className="text-sm font-bold">{selectedPhoto.likes?.length || 0}</span>
+                 </button>
+                 
                  <button onClick={() => downloadIndividualPhoto(selectedPhoto.image_url)} className="p-2 bg-white/10 text-white hover:bg-white/20 rounded-full transition-colors">
                     <Download size={20} />
                  </button>
@@ -455,6 +506,13 @@ export default function Home() {
              <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4 max-w-7xl mx-auto">
                 {userPhotos.map((photo, index) => (
                   <div key={photo.id} onClick={() => setSelectedPhoto(photo)} className={`relative break-inside-avoid w-full rounded-xl overflow-hidden bg-gray-200 cursor-pointer group ${index % 2 === 0 ? 'h-64' : 'h-48'}`}>
+                    <div 
+                       onClick={(e) => toggleLike(e, photo.id)}
+                       className="absolute bottom-3 right-3 bg-black/30 hover:bg-black/60 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-1.5 z-10 transition-colors"
+                    >
+                       <Heart size={16} className={photo.likes?.some(l => l.user_id === user?.id) ? "fill-red-500 text-red-500" : "text-white"} />
+                       <span className="text-white text-xs font-bold">{photo.likes?.length || 0}</span>
+                    </div>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img 
                       src={getOptimizedUrl(photo.image_url)} 
