@@ -28,7 +28,7 @@ const ADMIN_EMAILS = [
 ]; 
 
 const CATEGORIES = [
-  { id: 'top', label: '🏆 Top Ranking', unlockDate: '2026-10-05' },
+  { id: 'top', label: 'Top Ranking', unlockDate: '2026-10-05' },
   { id: 'todos', label: 'Todas las fotos', unlockDate: '2026-10-05' },
   { id: 'lunes', label: 'Lunes 05 - Rally', unlockDate: '2026-10-05' },
   { id: 'martes', label: 'Martes 06 - Talleres', unlockDate: '2026-10-06' },
@@ -126,9 +126,6 @@ export default function Home() {
         setUser(session?.user ?? null);
     });
 
-    // =================================================================
-    // MOTOR DE TIEMPO REAL ULTRA OPTIMIZADO
-    // =================================================================
     const realtimeChannel = supabase.channel('congreso-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'photos' }, (payload) => {
         const newPhoto = { ...(payload.new as Photo), likes: [] };
@@ -136,17 +133,14 @@ export default function Home() {
         setTotalPhotosCount(prev => prev + 1);
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'photos' }, (payload) => {
-        // Cuando un Admin cambia la categoría, se actualiza al instante en todos los celulares
         const updatedPhoto = payload.new as Photo;
         setPhotos(prev => prev.map(p => p.id === updatedPhoto.id ? { ...p, category: updatedPhoto.category } : p));
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'photos' }, (payload) => {
-        // Cuando un Admin borra una foto, desaparece sola de las pantallas
         setPhotos(prev => prev.filter(p => p.id !== payload.old.id));
         setTotalPhotosCount(prev => prev - 1);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
-        // Los likes cambian tan rápido que es mejor refescar (podría optimizarse también luego)
         fetchPhotos();
       })
       .subscribe();
@@ -215,7 +209,7 @@ export default function Home() {
 
   const toggleLike = async (e: React.MouseEvent, photoId: string) => {
     e.stopPropagation(); 
-    if (!user) return toast.error("Entra con tu cuenta para dar me gusta 🔥");
+    if (!user) return toast.error("Entra con tu cuenta para dar me gusta ❤️");
 
     const photo = photos.find(p => p.id === photoId);
     if (!photo) return;
@@ -297,7 +291,7 @@ export default function Home() {
     if(!confirm('¿Borrar esta foto de la galería pública?')) return;
     const { error } = await supabase.from('photos').delete().eq('id', id);
     if (!error) {
-       // La actualización visual ya la hace el 'DELETE' del Realtime automáticamente
+       // La eliminación local la maneja Realtime
     }
   };
 
@@ -307,7 +301,6 @@ export default function Home() {
       const { error } = await supabase.from('photos').update({ category: newCategory }).eq('id', photoId);
       if (error) throw error;
       
-      // La actualización en los demás celulares la hace el 'UPDATE' del Realtime
       setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, category: newCategory } : p));
       if (selectedPhoto?.id === photoId) {
          setSelectedPhoto(prev => prev ? { ...prev, category: newCategory } : null);
@@ -352,7 +345,11 @@ export default function Home() {
       const response = await fetch(url);
       const blob = await response.blob();
       const file = new File([blob], `congreso-foto-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      
+      // NUEVO: Verificamos si estamos en celular para compartir. Si es PC, descargamos directo.
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'Foto Congreso ARQ' });
         toast.success('¡Listo!', { id: toastId });
       } else {
@@ -374,7 +371,11 @@ export default function Home() {
         const response = await fetch(dataUrl);
         const blob = await response.blob();
         const file = new File([blob], `congreso-arq-collage-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        
+        // NUEVO: Verificamos si estamos en celular para compartir. Si es PC, descargamos directo.
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({ files: [file], title: 'Congreso ARQ 2026' });
           toast.success('¡Acción completada!');
         } else {
